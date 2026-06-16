@@ -1,0 +1,1156 @@
+diff --git a/apps/api/src/modules/rooms/routes.ts b/apps/api/src/modules/rooms/routes.ts
+--- a/apps/api/src/modules/rooms/routes.ts
++++ b/apps/api/src/modules/rooms/routes.ts
+@@ -1,44 +1,140 @@
+-import { FastifyPluginAsync } from 'fastify';
+-import { prisma } from '../../lib/db';
+-
+-const router: FastifyPluginAsync = async (fastify) => {
+-  fastify.post('/', async (request, reply) => {
+-    const { name, isPrivate } = request.body as any;
+-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+-    const ownerId = (request.headers['x-user-id'] as string) || null;
+-    const data: any = { name, code, isPrivate: !!isPrivate };
+-    if (ownerId) data.ownerId = ownerId;
+-    const room = await prisma.room.create({ data });
+-    reply.send(room);
+-  });
+-
+-  fastify.post('/join', async (request, reply) => {
+-    const { code, displayName } = request.body as any;
+-    const room = await prisma.room.findUnique({ where: { code } });
+-    if (!room) return reply.status(404).send({ error: 'Room not found' });
+-    // create member
+-    const member = await prisma.roomMember.create({ data: { roomId: room.id, displayName } });
+-    reply.send({ room, member });
+-  });
+-
+-  fastify.get('/:id', async (request, reply) => {
+-    const { id } = request.params as any;
+-    const room = await prisma.room.findUnique({ where: { id }, include: { members: true } });
+-    if (!room) return reply.status(404).send({ error: 'Not found' });
+-    reply.send(room);
+-  });
+-
+-  fastify.delete('/:id', async (request, reply) => {
+-    const { id } = request.params as any;
+-    await prisma.room.delete({ where: { id } });
+-    reply.send({ ok: true });
+-  });
+-
+-  fastify.post('/transfer-host', async (request, reply) => {
+-    const { roomId, newOwnerId } = request.body as any;
+-    await prisma.room.update({ where: { id: roomId }, data: { ownerId: newOwnerId } });
+-    reply.send({ ok: true });
+-  });
+-};
+-
+-export default router;
++import { FastifyPluginAsync } from 'fastify';
++import { prisma } from '../../lib/db';
++import { authMiddleware } from '../../middlewares/auth';
++import { z } from 'zod';
++
++const router: FastifyPluginAsync = async (fastify) => {
++  const createRoomSchema = z.object({ name: z.string().min(1), isPrivate: z.boolean().optional() });
++  const joinRoomSchema = z.object({ code: z.string().min(1), displayName: z.string().min(1) });
++  const transferHostSchema = z.object({ roomId: z.string().min(1), newOwnerId: z.string().min(1) });
++
++  // Create room: authenticated, owner derived from token
++  fastify.post('/', { preHandler: [authMiddleware, (fastify as any).validate(createRoomSchema)] }, async (request, reply) => {
++    const { name, isPrivate } = request.body as any;
++    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
++    const ownerId = (request as any).user?.id;
++    if (!ownerId) return reply.status(401).send({ error: 'Unauthorized' });
++    const data: any = { name, code, isPrivate: !!isPrivate, ownerId };
++    const room = await prisma.room.create({ data });
++    reply.send(room);
++  });
++
++  // Join room: validate input; require auth for private rooms (server-side enforcement)
++  fastify.post('/join', { preHandler: (fastify as any).validate(joinRoomSchema) }, async (request, reply) => {
++    const { code, displayName } = request.body as any;
++    const room = await prisma.room.findUnique({ where: { code } });
++    if (!room) return reply.status(404).send({ error: 'Room not found' });
++
++    if (room.isPrivate) {
++      // require auth for private rooms
++      const authHeader = request.headers.authorization;
++      if (!authHeader) return reply.status(403).send({ error: 'Private room, authentication required' });
++      await authMiddleware(request as any, reply as any);
++      if ((reply as any).sent) return;
++    }
++
++    const userId = (request as any).user?.id || null;
++    const member = await prisma.roomMember.create({ data: { roomId: room.id, displayName, userId } });
++    reply.send({ room, member });
++  });
++
++  // Get room: include members only for authorized users on private rooms
++  fastify.get('/:id', async (request, reply) => {
++    const { id } = request.params as any;
++    const room = await prisma.room.findUnique({ where: { id }, include: { members: true } });
++    if (!room) return reply.status(404).send({ error: 'Not found' });
++    if (room.isPrivate) {
++      const authHeader = request.headers.authorization;
++      if (!authHeader) return reply.status(403).send({ error: 'Forbidden' });
++      await authMiddleware(request as any, reply as any);
++      if ((reply as any).sent) return;
++      const userId = (request as any).user?.id;
++      const isMember = room.members.some((m) => m.userId === userId);
++      if (!isMember && room.ownerId !== userId) {
++        return reply.status(403).send({ error: 'Forbidden' });
++      }
++    }
++    reply.send(room);
++  });
++
++  // Delete room: require auth and ownership or admin
++  fastify.delete('/:id', { preHandler: authMiddleware }, async (request, reply) => {
++    const { id } = request.params as any;
++    const userId = (request as any).user?.id;
++    const room = await prisma.room.findUnique({ where: { id } });
++    if (!room) return reply.status(404).send({ error: 'Not found' });
++    if (room.ownerId !== userId) {
++      // check DB role for admin privilege
++      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
++      if (user?.role !== 'ADMIN') return reply.status(403).send({ error: 'Forbidden' });
++    }
++    await prisma.room.delete({ where: { id } });
++    reply.send({ ok: true });
++  });
++
++  // Transfer host: require auth and ownership or admin
++  fastify.post('/transfer-host', { preHandler: [authMiddleware, (fastify as any).validate(transferHostSchema)] }, async (request, reply) => {
++    const { roomId, newOwnerId } = request.body as any;
++    const userId = (request as any).user?.id;
++    const room = await prisma.room.findUnique({ where: { id: roomId } });
++    if (!room) return reply.status(404).send({ error: 'Not found' });
++    if (room.ownerId !== userId) {
++      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
++      if (user?.role !== 'ADMIN') return reply.status(403).send({ error: 'Forbidden' });
++    }
++    await prisma.room.update({ where: { id: roomId }, data: { ownerId: newOwnerId } });
++    reply.send({ ok: true });
++  });
++};
++
++export default router;
+diff --git a/apps/api/src/modules/auth/routes.ts b/apps/api/src/modules/auth/routes.ts
+--- a/apps/api/src/modules/auth/routes.ts
++++ b/apps/api/src/modules/auth/routes.ts
+@@ -1,40 +1,70 @@
+-import { FastifyPluginAsync } from 'fastify';
+-import bcrypt from 'bcrypt';
+-import jwt from 'jsonwebtoken';
+-import { prisma } from '../../lib/db';
+-
+-const router: FastifyPluginAsync = async (fastify) => {
+-  fastify.post('/register', async (request, reply) => {
+-    const { email, username, password } = request.body as any;
+-    const hashed = password ? await bcrypt.hash(password, 10) : null;
+-    const user = await prisma.user.create({ data: { email, username, password: hashed } });
+-    const token = jwt.sign({ sub: user.id }, process.env.JWT_SECRET as string, { expiresIn: '7d' });
+-    reply.send({ user: { id: user.id, username: user.username, email: user.email }, token });
+-  });
+-
+-  fastify.post('/login', async (request, reply) => {
+-    const { email, password } = request.body as any;
+-    const user = await prisma.user.findFirst({ where: { email } });
+-    if (!user || !user.password) return reply.status(401).send({ error: 'Invalid credentials' });
+-    const ok = await bcrypt.compare(password, user.password);
+-    if (!ok) return reply.status(401).send({ error: 'Invalid credentials' });
+-    const token = jwt.sign({ sub: user.id }, process.env.JWT_SECRET as string, { expiresIn: '7d' });
+-    reply.send({ user: { id: user.id, username: user.username, email: user.email }, token });
+-  });
+-
+-  fastify.get('/me', async (request, reply) => {
+-    const auth = request.headers.authorization;
+-    if (!auth) return reply.status(401).send({ error: 'Unauthorized' });
+-    const token = auth.replace(/^Bearer\s+/, '');
+-    try {
+-      const payload: any = jwt.verify(token, process.env.JWT_SECRET as string);
+-      const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+-      if (!user) return reply.status(404).send({ error: 'Not found' });
+-      reply.send({ user: { id: user.id, username: user.username, email: user.email } });
+-    } catch (err) {
+-      reply.status(401).send({ error: 'Invalid token' });
+-    }
+-  });
+-};
+-
+-export default router;
++import { FastifyPluginAsync } from 'fastify';
++import bcrypt from 'bcrypt';
++import jwt from 'jsonwebtoken';
++import { prisma } from '../../lib/db';
++import { z } from 'zod';
++
++const router: FastifyPluginAsync = async (fastify) => {
++  const registerSchema = z.object({
++    email: z.string().email(),
++    username: z.string().min(1),
++    password: z.string().min(8)
++  });
++
++  const loginSchema = z.object({
++    email: z.string().email(),
++    password: z.string().min(1)
++  });
++
++  fastify.post('/register', { preHandler: (fastify as any).validate(registerSchema) }, async (request, reply) => {
++    const { email, username, password } = request.body as any;
++    const hashed = await bcrypt.hash(password, 12);
++    const user = await prisma.user.create({ data: { email, username, password: hashed } });
++    const token = jwt.sign({ sub: user.id }, process.env.JWT_SECRET as string, { expiresIn: '7d' });
++    reply.send({ user: { id: user.id, username: user.username, email: user.email }, token });
++  });
++
++  fastify.post('/login', { preHandler: (fastify as any).validate(loginSchema) }, async (request, reply) => {
++    const { email, password } = request.body as any;
++    const user = await prisma.user.findFirst({ where: { email } });
++    if (!user || !user.password) return reply.status(401).send({ error: 'Invalid credentials' });
++    const ok = await bcrypt.compare(password, user.password);
++    if (!ok) return reply.status(401).send({ error: 'Invalid credentials' });
++    const token = jwt.sign({ sub: user.id }, process.env.JWT_SECRET as string, { expiresIn: '7d' });
++    reply.send({ user: { id: user.id, username: user.username, email: user.email }, token });
++  });
++
++  fastify.get('/me', async (request, reply) => {
++    const auth = request.headers.authorization;
++    if (!auth) return reply.status(401).send({ error: 'Unauthorized' });
++    const token = auth.replace(/^Bearer\s+/, '');
++    try {
++      const payload: any = jwt.verify(token, process.env.JWT_SECRET as string);
++      const user = await prisma.user.findUnique({ where: { id: payload.sub } });
++      if (!user) return reply.status(404).send({ error: 'Not found' });
++      reply.send({ user: { id: user.id, username: user.username, email: user.email } });
++    } catch (err) {
++      reply.status(401).send({ error: 'Invalid token' });
++    }
++  });
++};
++
++export default router;
+diff --git a/apps/api/src/modules/messages/routes.ts b/apps/api/src/modules/messages/routes.ts
+--- a/apps/api/src/modules/messages/routes.ts
++++ b/apps/api/src/modules/messages/routes.ts
+@@ -1,40 +1,80 @@
+-import { FastifyPluginAsync } from 'fastify';
+-import { prisma } from '../../lib/db';
+-import { authMiddleware } from '../../middlewares/auth';
+-
+-const router: FastifyPluginAsync = async (fastify) => {
+-  // Create message: persist then emit
+-  fastify.post('/', { preHandler: authMiddleware }, async (request, reply) => {
+-    const { roomId, content } = request.body as any;
+-    if (!roomId || !content) return reply.status(400).send({ error: 'roomId and content required' });
+-    const userId = (request as any).user?.id || null;
+-    const msg = await prisma.message.create({ data: { roomId, userId, content } });
+-    // Emit persisted message
+-    fastify.io?.to(roomId).emit('message', msg);
+-    return reply.send(msg);
+-  });
+-
+-  // List messages paginated
+-  fastify.get('/', async (request, reply) => {
+-    const { roomId, page = '1', limit = '50' } = request.query as any;
+-    if (!roomId) return reply.status(400).send({ error: 'roomId required' });
+-    const p = Math.max(1, parseInt(page, 10) || 1);
+-    const l = Math.min(200, parseInt(limit, 10) || 50);
+-    const messages = await prisma.message.findMany({
+-      where: { roomId },
+-      orderBy: { createdAt: 'desc' },
+-      take: l,
+-      skip: (p - 1) * l,
+-    });
+-    return reply.send({ messages, page: p, limit: l });
+-  });
+-};
+-
+-export default router;
++import { FastifyPluginAsync } from 'fastify';
++import { prisma } from '../../lib/db';
++import { authMiddleware } from '../../middlewares/auth';
++import { z } from 'zod';
++
++const router: FastifyPluginAsync = async (fastify) => {
++  const createMessageSchema = z.object({ roomId: z.string().min(1), content: z.string().min(1) });
++
++  fastify.post('/', { preHandler: [authMiddleware, (fastify as any).validate(createMessageSchema)] }, async (request, reply) => {
++    const { roomId, content } = request.body as any;
++    const userId = (request as any).user?.id;
++    if (!userId) return reply.status(401).send({ error: 'Unauthorized' });
++
++    const room = await prisma.room.findUnique({ where: { id: roomId } });
++    if (!room) return reply.status(404).send({ error: 'Room not found' });
++    if (room.isPrivate) {
++      const isMember = await prisma.roomMember.findFirst({ where: { roomId, userId } });
++      if (!isMember && room.ownerId !== userId) return reply.status(403).send({ error: 'Forbidden' });
++    }
++
++    const msg = await prisma.message.create({ data: { roomId, userId, content } });
++    fastify.io?.to(roomId).emit('message', msg);
++    return reply.send(msg);
++  });
++
++  fastify.get('/', { preHandler: authMiddleware }, async (request, reply) => {
++    const { roomId, page = '1', limit = '50' } = request.query as any;
++    if (!roomId) return reply.status(400).send({ error: 'roomId required' });
++    const userId = (request as any).user?.id;
++    const room = await prisma.room.findUnique({ where: { id: roomId } });
++    if (!room) return reply.status(404).send({ error: 'Not found' });
++    if (room.isPrivate) {
++      const isMember = await prisma.roomMember.findFirst({ where: { roomId, userId } });
++      if (!isMember && room.ownerId !== userId) return reply.status(403).send({ error: 'Forbidden' });
++    }
++    const p = Math.max(1, parseInt(page, 10) || 1);
++    const l = Math.min(200, parseInt(limit, 10) || 50);
++    const messages = await prisma.message.findMany({
++      where: { roomId },
++      orderBy: { createdAt: 'desc' },
++      take: l,
++      skip: (p - 1) * l,
++    });
++    return reply.send({ messages, page: p, limit: l });
++  });
++};
++
++export default router;
+diff --git a/apps/api/src/modules/uploads/routes.ts b/apps/api/src/modules/uploads/routes.ts
+--- a/apps/api/src/modules/uploads/routes.ts
++++ b/apps/api/src/modules/uploads/routes.ts
+@@ -1,30 +1,70 @@
+-import { FastifyPluginAsync } from 'fastify';
+-
+-const router: FastifyPluginAsync = async (fastify) => {
+-  fastify.post('/init', async (request, reply) => {
+-    const { key, contentType } = (request.body as any) || {};
+-    const uploadKey = key || `videos/${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
+-    const presigned = await import('../../uploads/r2').then((m) => m.generatePresignedUpload(uploadKey, contentType));
+-    return presigned;
+-  });
+-
+-  fastify.post('/complete', async (request, reply) => {
+-    // Confirm upload flow - you may persist metadata here
+-    return { ok: true };
+-  });
+-};
+-
+-export default router;
++import { FastifyPluginAsync } from 'fastify';
++import { authMiddleware } from '../../middlewares/auth';
++import { z } from 'zod';
++
++const router: FastifyPluginAsync = async (fastify) => {
++  const initSchema = z.object({ key: z.string().optional(), contentType: z.string().optional() });
++  const ALLOWED = ['video/mp4', 'image/jpeg', 'image/png', 'application/octet-stream'];
++
++  fastify.post('/init', { preHandler: [authMiddleware, (fastify as any).validate(initSchema)] }, async (request, reply) => {
++    const { contentType } = (request.body as any) || {};
++    const userId = (request as any).user?.id;
++    if (!userId) return reply.status(401).send({ error: 'Unauthorized' });
++
++    if (contentType && !ALLOWED.includes(contentType)) return reply.status(400).send({ error: 'Invalid contentType' });
++
++    const ext = contentType === 'video/mp4' ? '.mp4' : contentType === 'image/jpeg' ? '.jpg' : contentType === 'image/png' ? '.png' : '.bin';
++    const uploadKey = `uploads/${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
++
++    const presigned = await import('../../uploads/r2').then((m) => m.generatePresignedUpload(uploadKey, contentType));
++    return presigned;
++  });
++
++  fastify.post('/complete', { preHandler: authMiddleware }, async (request, reply) => {
++    return { ok: true };
++  });
++};
++
++export default router;
+diff --git a/apps/api/src/uploads/r2.ts b/apps/api/src/uploads/r2.ts
+--- a/apps/api/src/uploads/r2.ts
++++ b/apps/api/src/uploads/r2.ts
+@@ -1,40 +1,40 @@
+ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+ 
+ const s3 = new S3Client({
+   endpoint: process.env.R2_ENDPOINT,
+   region: 'auto',
+   credentials: {
+     accessKeyId: process.env.R2_ACCESS_KEY_ID as string,
+     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY as string,
+   },
+   forcePathStyle: false,
+ });
+ 
+ export async function generatePresignedUpload(key: string, contentType = 'application/octet-stream') {
+   const command = new PutObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key, ContentType: contentType });
+-  const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
++  const url = await getSignedUrl(s3, command, { expiresIn: 300 });
+   return { uploadUrl: url, key };
+ }
+
+diff --git a/apps/api/src/tests/auth.register.test.ts b/apps/api/src/tests/auth.register.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/tests/auth.register.test.ts
+@@ -0,0 +1,39 @@
++import { describe, it, expect } from 'vitest';
++import Fastify from 'fastify';
++import { registerRoutes } from '../../app/routes';
++
++describe('auth register', () => {
++  it('rejects missing password', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++    const res = await server.inject({
++      method: 'POST',
++      url: '/auth/register',
++      payload: { username: 'u'+Date.now(), email: `t${Date.now()}@example.com` }
++    });
++    expect(res.statusCode).toBe(400);
++  });
++
++  it('rejects short password', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++    const res = await server.inject({
++      method: 'POST',
++      url: '/auth/register',
++      payload: { username: 'u'+Date.now(), email: `t${Date.now()}@example.com`, password: '123' }
++    });
++    expect(res.statusCode).toBe(400);
++  });
++
++  it('registers with strong password', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++    const res = await server.inject({
++      method: 'POST',
++      url: '/auth/register',
++      payload: { username: 'u'+Date.now(), email: `t${Date.now()}@example.com`, password: 'Password123!' }
++    });
++    expect([200,201]).toContain(res.statusCode);
++    if (res.statusCode === 200) {
++      const body = JSON.parse(res.payload);
++      expect(body.token).toBeDefined();
++      expect(body.user).toBeDefined();
++    }
++  });
++});
+
+diff --git a/apps/api/src/tests/rooms.auth.test.ts b/apps/api/src/tests/rooms.auth.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/tests/rooms.auth.test.ts
+@@ -0,0 +1,83 @@
++import { describe, it, expect } from 'vitest';
++import Fastify from 'fastify';
++import { registerRoutes } from '../../app/routes';
++
++describe('rooms auth & ownership', () => {
++  it('POST /rooms requires auth', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++    const res = await server.inject({ method: 'POST', url: '/rooms', payload: { name: 'r' } });
++    expect(res.statusCode).toBe(401);
++  });
++
++  it('POST /rooms sets owner from token and DELETE requires owner', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++
++    // register owner
++    const reg = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'owner'+Date.now(), email: `owner${Date.now()}@example.com`, password: 'Password123!' } });
++    const owner = JSON.parse(reg.payload);
++    const tokenOwner = owner.token;
++
++    // create room as owner
++    const r = await server.inject({ method: 'POST', url: '/rooms', payload: { name: 'roomA' }, headers: { Authorization: `Bearer ${tokenOwner}` } });
++    expect([200,201]).toContain(r.statusCode);
++    const room = JSON.parse(r.payload);
++
++    // register attacker
++    const reg2 = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'att'+Date.now(), email: `att${Date.now()}@example.com`, password: 'Password123!' } });
++    const attacker = JSON.parse(reg2.payload);
++    const tokenAtt = attacker.token;
++
++    // attacker tries to delete
++    const delAtt = await server.inject({ method: 'DELETE', url: `/rooms/${room.id}`, headers: { Authorization: `Bearer ${tokenAtt}` } });
++    expect([401,403]).toContain(delAtt.statusCode);
++
++    // owner deletes
++    const delOwner = await server.inject({ method: 'DELETE', url: `/rooms/${room.id}`, headers: { Authorization: `Bearer ${tokenOwner}` } });
++    expect([200,201]).toContain(delOwner.statusCode);
++  });
++
++  it('transfer-host requires owner (or admin)', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++
++    const reg = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'owner'+Date.now(), email: `owner${Date.now()}@example.com`, password: 'Password123!' } });
++    const owner = JSON.parse(reg.payload);
++    const tokenOwner = owner.token;
++
++    const reg2 = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'user2'+Date.now(), email: `u2${Date.now()}@example.com`, password: 'Password123!' } });
++    const user2 = JSON.parse(reg2.payload);
++
++    const r = await server.inject({ method: 'POST', url: '/rooms', payload: { name: 'roomB' }, headers: { Authorization: `Bearer ${tokenOwner}` } });
++    const room = JSON.parse(r.payload);
++
++    // attacker (user2) tries transfer
++    const transferAtt = await server.inject({ method: 'POST', url: '/rooms/transfer-host', payload: { roomId: room.id, newOwnerId: user2.user.id }, headers: { Authorization: `Bearer ${user2.token}` } });
++    expect([401,403]).toContain(transferAtt.statusCode);
++
++    // owner does transfer
++    const transferOk = await server.inject({ method: 'POST', url: '/rooms/transfer-host', payload: { roomId: room.id, newOwnerId: user2.user.id }, headers: { Authorization: `Bearer ${tokenOwner}` } });
++    expect([200,201]).toContain(transferOk.statusCode);
++  });
++});
+
+diff --git a/apps/api/src/tests/messages.auth.test.ts b/apps/api/src/tests/messages.auth.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/tests/messages.auth.test.ts
+@@ -0,0 +1,54 @@
++import { describe, it, expect } from 'vitest';
++import Fastify from 'fastify';
++import { registerRoutes } from '../../app/routes';
++
++describe('messages access control', () => {
++  it('GET /messages requires membership for private rooms', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++
++    const reg = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'owner'+Date.now(), email: `owner${Date.now()}@example.com`, password: 'Password123!' } });
++    const owner = JSON.parse(reg.payload);
++
++    const r = await server.inject({ method: 'POST', url: '/rooms', payload: { name: 'privateRoom', isPrivate: true }, headers: { Authorization: `Bearer ${owner.token}` } });
++    const room = JSON.parse(r.payload);
++
++    // unauthenticated list
++    const listAnon = await server.inject({ method: 'GET', url: `/messages?roomId=${room.id}` });
++    expect([401,403]).toContain(listAnon.statusCode);
++
++    // owner posts message
++    const post = await server.inject({ method: 'POST', url: '/messages', payload: { roomId: room.id, content: 'hi' }, headers: { Authorization: `Bearer ${owner.token}` } });
++    expect([200,201]).toContain(post.statusCode);
++
++    // owner lists messages
++    const listOwner = await server.inject({ method: 'GET', url: `/messages?roomId=${room.id}`, headers: { Authorization: `Bearer ${owner.token}` } });
++    expect([200,201]).toContain(listOwner.statusCode);
++    if (listOwner.statusCode === 200) {
++      const body = JSON.parse(listOwner.payload);
++      expect(Array.isArray(body.messages)).toBe(true);
++    }
++  });
++});
+
+diff --git a/apps/api/src/tests/uploads.auth.test.ts b/apps/api/src/tests/uploads.auth.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/tests/uploads.auth.test.ts
+@@ -0,0 +1,48 @@
++import { describe, it, expect } from 'vitest';
++import Fastify from 'fastify';
++import { registerRoutes } from '../../app/routes';
++
++describe('uploads security', () => {
++  it('POST /uploads/init requires auth and returns key prefix', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++
++    const reg = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'u'+Date.now(), email: `u${Date.now()}@example.com`, password: 'Password123!' } });
++    const user = JSON.parse(reg.payload);
++
++    // unauthenticated
++    const anon = await server.inject({ method: 'POST', url: '/uploads/init', payload: { contentType: 'video/mp4' } });
++    expect([401,403]).toContain(anon.statusCode);
++
++    // authenticated and allowed contentType
++    const ok = await server.inject({ method: 'POST', url: '/uploads/init', payload: { contentType: 'video/mp4' }, headers: { Authorization: `Bearer ${user.token}` } });
++    expect([200,201]).toContain(ok.statusCode);
++    if (ok.statusCode === 200) {
++      const body = JSON.parse(ok.payload);
++      expect(body.key.startsWith(`uploads/`)).toBeTruthy();
++      expect(body.uploadUrl).toBeDefined();
++    }
++
++    // forbidden content type
++    const bad = await server.inject({ method: 'POST', url: '/uploads/init', payload: { contentType: 'text/plain' }, headers: { Authorization: `Bearer ${user.token}` } });
++    expect(bad.statusCode).toBe(400);
++  });
++});
+*** P0 fixes patch: security hardening (rooms, auth, messages, uploads, tests)
+*** Generated by assistant; do not apply automatically.
+
+diff --git a/apps/api/src/modules/rooms/routes.ts b/apps/api/src/modules/rooms/routes.ts
+@@ -1,44 +1,140 @@
+-import { FastifyPluginAsync } from 'fastify';
+-import { prisma } from '../../lib/db';
+-
+-const router: FastifyPluginAsync = async (fastify) => {
+-  fastify.post('/', async (request, reply) => {
+-    const { name, isPrivate } = request.body as any;
+-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+-    const ownerId = (request.headers['x-user-id'] as string) || null;
+-    const data: any = { name, code, isPrivate: !!isPrivate };
+-    if (ownerId) data.ownerId = ownerId;
+-    const room = await prisma.room.create({ data });
+-    reply.send(room);
+-  });
+-
+-  fastify.post('/join', async (request, reply) => {
+-    const { code, displayName } = request.body as any;
+-    const room = await prisma.room.findUnique({ where: { code } });
+-    if (!room) return reply.status(404).send({ error: 'Room not found' });
+-    // create member
+-    const member = await prisma.roomMember.create({ data: { roomId: room.id, displayName } });
+-    reply.send({ room, member });
+-  });
+-
+-  fastify.get('/:id', async (request, reply) => {
+-    const { id } = request.params as any;
+-    const room = await prisma.room.findUnique({ where: { id }, include: { members: true } });
+-    if (!room) return reply.status(404).send({ error: 'Not found' });
+-    reply.send(room);
+-  });
+-
+-  fastify.delete('/:id', async (request, reply) => {
+-    const { id } = request.params as any;
+-    await prisma.room.delete({ where: { id } });
+-    reply.send({ ok: true });
+-  });
+-
+-  fastify.post('/transfer-host', async (request, reply) => {
+-    const { roomId, newOwnerId } = request.body as any;
+-    await prisma.room.update({ where: { id: roomId }, data: { ownerId: newOwnerId } });
+-    reply.send({ ok: true });
+-  });
+-};
+-
+-export default router;
++import { FastifyPluginAsync } from 'fastify';
++import { prisma } from '../../lib/db';
++import { authMiddleware } from '../../middlewares/auth';
++import { z } from 'zod';
++
++const router: FastifyPluginAsync = async (fastify) => {
++  const createRoomSchema = z.object({ name: z.string().min(1), isPrivate: z.boolean().optional() });
++  const joinRoomSchema = z.object({ code: z.string().min(1), displayName: z.string().min(1) });
++  const transferHostSchema = z.object({ roomId: z.string().min(1), newOwnerId: z.string().min(1) });
++
++  fastify.post('/', { preHandler: [authMiddleware, (fastify as any).validate(createRoomSchema)] }, async (request, reply) => {
++    const { name, isPrivate } = request.body as any;
++    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
++    const ownerId = (request as any).user?.id;
++    if (!ownerId) return reply.status(401).send({ error: 'Unauthorized' });
++    const data: any = { name, code, isPrivate: !!isPrivate, ownerId };
++    const room = await prisma.room.create({ data });
++    reply.send(room);
++  });
++
++  fastify.post('/join', { preHandler: (fastify as any).validate(joinRoomSchema) }, async (request, reply) => {
++    const { code, displayName } = request.body as any;
++    const room = await prisma.room.findUnique({ where: { code } });
++    if (!room) return reply.status(404).send({ error: 'Room not found' });
++
++    if (room.isPrivate) {
++      const authHeader = request.headers.authorization;
++      if (!authHeader) return reply.status(403).send({ error: 'Private room, authentication required' });
++      await authMiddleware(request as any, reply as any);
++      if ((reply as any).sent) return;
++    }
++
++    const userId = (request as any).user?.id || null;
++    const member = await prisma.roomMember.create({ data: { roomId: room.id, displayName, userId } });
++    reply.send({ room, member });
++  });
++
++  fastify.get('/:id', async (request, reply) => {
++    const { id } = request.params as any;
++    const room = await prisma.room.findUnique({ where: { id }, include: { members: true } });
++    if (!room) return reply.status(404).send({ error: 'Not found' });
++    if (room.isPrivate) {
++      const authHeader = request.headers.authorization;
++      if (!authHeader) return reply.status(403).send({ error: 'Forbidden' });
++      await authMiddleware(request as any, reply as any);
++      if ((reply as any).sent) return;
++      const userId = (request as any).user?.id;
++      const isMember = room.members.some((m) => m.userId === userId);
++      if (!isMember && room.ownerId !== userId) {
++        return reply.status(403).send({ error: 'Forbidden' });
++      }
++    }
++    reply.send(room);
++  });
++
++  fastify.delete('/:id', { preHandler: authMiddleware }, async (request, reply) => {
++    const { id } = request.params as any;
++    const userId = (request as any).user?.id;
++    const room = await prisma.room.findUnique({ where: { id } });
++    if (!room) return reply.status(404).send({ error: 'Not found' });
++    if (room.ownerId !== userId) {
++      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
++      if (user?.role !== 'ADMIN') return reply.status(403).send({ error: 'Forbidden' });
++    }
++    await prisma.room.delete({ where: { id } });
++    reply.send({ ok: true });
++  });
++
++  fastify.post('/transfer-host', { preHandler: [authMiddleware, (fastify as any).validate(transferHostSchema)] }, async (request, reply) => {
++    const { roomId, newOwnerId } = request.body as any;
++    const userId = (request as any).user?.id;
++    const room = await prisma.room.findUnique({ where: { id: roomId } });
++    if (!room) return reply.status(404).send({ error: 'Not found' });
++    if (room.ownerId !== userId) {
++      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
++      if (user?.role !== 'ADMIN') return reply.status(403).send({ error: 'Forbidden' });
++    }
++    await prisma.room.update({ where: { id: roomId }, data: { ownerId: newOwnerId } });
++    reply.send({ ok: true });
++  });
++};
++
++export default router;
+
+diff --git a/apps/api/src/modules/auth/routes.ts b/apps/api/src/modules/auth/routes.ts
+@@ -1,40 +1,70 @@
+-import { FastifyPluginAsync } from 'fastify';
+-import bcrypt from 'bcrypt';
+-import jwt from 'jsonwebtoken';
+-import { prisma } from '../../lib/db';
+-
+-const router: FastifyPluginAsync = async (fastify) => {
+-  fastify.post('/register', async (request, reply) => {
+-    const { email, username, password } = request.body as any;
+-    const hashed = password ? await bcrypt.hash(password, 10) : null;
+-    const user = await prisma.user.create({ data: { email, username, password: hashed } });
+-    const token = jwt.sign({ sub: user.id }, process.env.JWT_SECRET as string, { expiresIn: '7d' });
+-    reply.send({ user: { id: user.id, username: user.username, email: user.email }, token });
+-  });
+-
+-  fastify.post('/login', async (request, reply) => {
+-    const { email, password } = request.body as any;
+-    const user = await prisma.user.findFirst({ where: { email } });
+-    if (!user || !user.password) return reply.status(401).send({ error: 'Invalid credentials' });
+-    const ok = await bcrypt.compare(password, user.password);
+-    if (!ok) return reply.status(401).send({ error: 'Invalid credentials' });
+-    const token = jwt.sign({ sub: user.id }, process.env.JWT_SECRET as string, { expiresIn: '7d' });
+-    reply.send({ user: { id: user.id, username: user.username, email: user.email }, token });
+-  });
+-
+-  fastify.get('/me', async (request, reply) => {
+-    const auth = request.headers.authorization;
+-    if (!auth) return reply.status(401).send({ error: 'Unauthorized' });
+-    const token = auth.replace(/^Bearer\s+/, '');
+-    try {
+-      const payload: any = jwt.verify(token, process.env.JWT_SECRET as string);
+-      const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+-      if (!user) return reply.status(404).send({ error: 'Not found' });
+-      reply.send({ user: { id: user.id, username: user.username, email: user.email } });
+-    } catch (err) {
+-      reply.status(401).send({ error: 'Invalid token' });
+-    }
+-  });
+-};
+-
+-export default router;
++import { FastifyPluginAsync } from 'fastify';
++import bcrypt from 'bcrypt';
++import jwt from 'jsonwebtoken';
++import { prisma } from '../../lib/db';
++import { z } from 'zod';
++
++const router: FastifyPluginAsync = async (fastify) => {
++  const registerSchema = z.object({
++    email: z.string().email(),
++    username: z.string().min(1),
++    password: z.string().min(8)
++  });
++
++  const loginSchema = z.object({
++    email: z.string().email(),
++    password: z.string().min(1)
++  });
++
++  fastify.post('/register', { preHandler: (fastify as any).validate(registerSchema) }, async (request, reply) => {
++    const { email, username, password } = request.body as any;
++    const hashed = await bcrypt.hash(password, 12);
++    const user = await prisma.user.create({ data: { email, username, password: hashed } });
++    const token = jwt.sign({ sub: user.id }, process.env.JWT_SECRET as string, { expiresIn: '7d' });
++    reply.send({ user: { id: user.id, username: user.username, email: user.email }, token });
++  });
++
++  fastify.post('/login', { preHandler: (fastify as any).validate(loginSchema) }, async (request, reply) => {
++    const { email, password } = request.body as any;
++    const user = await prisma.user.findFirst({ where: { email } });
++    if (!user || !user.password) return reply.status(401).send({ error: 'Invalid credentials' });
++    const ok = await bcrypt.compare(password, user.password);
++    if (!ok) return reply.status(401).send({ error: 'Invalid credentials' });
++    const token = jwt.sign({ sub: user.id }, process.env.JWT_SECRET as string, { expiresIn: '7d' });
++    reply.send({ user: { id: user.id, username: user.username, email: user.email }, token });
++  });
++
++  fastify.get('/me', async (request, reply) => {
++    const auth = request.headers.authorization;
++    if (!auth) return reply.status(401).send({ error: 'Unauthorized' });
++    const token = auth.replace(/^Bearer\s+/, '');
++    try {
++      const payload: any = jwt.verify(token, process.env.JWT_SECRET as string);
++      const user = await prisma.user.findUnique({ where: { id: payload.sub } });
++      if (!user) return reply.status(404).send({ error: 'Not found' });
++      reply.send({ user: { id: user.id, username: user.username, email: user.email } });
++    } catch (err) {
++      reply.status(401).send({ error: 'Invalid token' });
++    }
++  });
++};
++
++export default router;
+
+diff --git a/apps/api/src/modules/messages/routes.ts b/apps/api/src/modules/messages/routes.ts
+@@ -1,40 +1,80 @@
+-import { FastifyPluginAsync } from 'fastify';
+-import { prisma } from '../../lib/db';
+-import { authMiddleware } from '../../middlewares/auth';
+-
+-const router: FastifyPluginAsync = async (fastify) => {
+-  // Create message: persist then emit
+-  fastify.post('/', { preHandler: authMiddleware }, async (request, reply) => {
+-    const { roomId, content } = request.body as any;
+-    if (!roomId || !content) return reply.status(400).send({ error: 'roomId and content required' });
+-    const userId = (request as any).user?.id || null;
+-    const msg = await prisma.message.create({ data: { roomId, userId, content } });
+-    // Emit persisted message
+-    fastify.io?.to(roomId).emit('message', msg);
+-    return reply.send(msg);
+-  });
+-
+-  // List messages paginated
+-  fastify.get('/', async (request, reply) => {
+-    const { roomId, page = '1', limit = '50' } = request.query as any;
+-    if (!roomId) return reply.status(400).send({ error: 'roomId required' });
+-    const p = Math.max(1, parseInt(page, 10) || 1);
+-    const l = Math.min(200, parseInt(limit, 10) || 50);
+-    const messages = await prisma.message.findMany({
+-      where: { roomId },
+-      orderBy: { createdAt: 'desc' },
+-      take: l,
+-      skip: (p - 1) * l,
+-    });
+-    return reply.send({ messages, page: p, limit: l });
+-  });
+-};
+-
+-export default router;
++import { FastifyPluginAsync } from 'fastify';
++import { prisma } from '../../lib/db';
++import { authMiddleware } from '../../middlewares/auth';
++import { z } from 'zod';
++
++const router: FastifyPluginAsync = async (fastify) => {
++  const createMessageSchema = z.object({ roomId: z.string().min(1), content: z.string().min(1) });
++
++  fastify.post('/', { preHandler: [authMiddleware, (fastify as any).validate(createMessageSchema)] }, async (request, reply) => {
++    const { roomId, content } = request.body as any;
++    const userId = (request as any).user?.id;
++    if (!userId) return reply.status(401).send({ error: 'Unauthorized' });
++
++    const room = await prisma.room.findUnique({ where: { id: roomId } });
++    if (!room) return reply.status(404).send({ error: 'Room not found' });
++    if (room.isPrivate) {
++      const isMember = await prisma.roomMember.findFirst({ where: { roomId, userId } });
++      if (!isMember && room.ownerId !== userId) return reply.status(403).send({ error: 'Forbidden' });
++    }
++
++    const msg = await prisma.message.create({ data: { roomId, userId, content } });
++    fastify.io?.to(roomId).emit('message', msg);
++    return reply.send(msg);
++  });
++
++  fastify.get('/', { preHandler: authMiddleware }, async (request, reply) => {
++    const { roomId, page = '1', limit = '50' } = request.query as any;
++    if (!roomId) return reply.status(400).send({ error: 'roomId required' });
++    const userId = (request as any).user?.id;
++    const room = await prisma.room.findUnique({ where: { id: roomId } });
++    if (!room) return reply.status(404).send({ error: 'Not found' });
++    if (room.isPrivate) {
++      const isMember = await prisma.roomMember.findFirst({ where: { roomId, userId } });
++      if (!isMember && room.ownerId !== userId) return reply.status(403).send({ error: 'Forbidden' });
++    }
++    const p = Math.max(1, parseInt(page, 10) || 1);
++    const l = Math.min(200, parseInt(limit, 10) || 50);
++    const messages = await prisma.message.findMany({
++      where: { roomId },
++      orderBy: { createdAt: 'desc' },
++      take: l,
++      skip: (p - 1) * l,
++    });
++    return reply.send({ messages, page: p, limit: l });
++  });
++};
++
++export default router;
+
+diff --git a/apps/api/src/modules/uploads/routes.ts b/apps/api/src/modules/uploads/routes.ts
+@@ -1,30 +1,70 @@
+-import { FastifyPluginAsync } from 'fastify';
+-
+-const router: FastifyPluginAsync = async (fastify) => {
+-  fastify.post('/init', async (request, reply) => {
+-    const { key, contentType } = (request.body as any) || {};
+-    const uploadKey = key || `videos/${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`;
+-    const presigned = await import('../../uploads/r2').then((m) => m.generatePresignedUpload(uploadKey, contentType));
+-    return presigned;
+-  });
+-
+-  fastify.post('/complete', async (request, reply) => {
+-    // Confirm upload flow - you may persist metadata here
+-    return { ok: true };
+-  });
+-};
+-
+-export default router;
++import { FastifyPluginAsync } from 'fastify';
++import { authMiddleware } from '../../middlewares/auth';
++import { z } from 'zod';
++
++const router: FastifyPluginAsync = async (fastify) => {
++  const initSchema = z.object({ key: z.string().optional(), contentType: z.string().optional() });
++  const ALLOWED = ['video/mp4', 'image/jpeg', 'image/png', 'application/octet-stream'];
++
++  fastify.post('/init', { preHandler: [authMiddleware, (fastify as any).validate(initSchema)] }, async (request, reply) => {
++    const { contentType } = (request.body as any) || {};
++    const userId = (request as any).user?.id;
++    if (!userId) return reply.status(401).send({ error: 'Unauthorized' });
++
++    if (contentType && !ALLOWED.includes(contentType)) return reply.status(400).send({ error: 'Invalid contentType' });
++
++    const ext = contentType === 'video/mp4' ? '.mp4' : contentType === 'image/jpeg' ? '.jpg' : contentType === 'image/png' ? '.png' : '.bin';
++    const uploadKey = `uploads/${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
++
++    const presigned = await import('../../uploads/r2').then((m) => m.generatePresignedUpload(uploadKey, contentType));
++    return presigned;
++  });
++
++  fastify.post('/complete', { preHandler: authMiddleware }, async (request, reply) => {
++    return { ok: true };
++  });
++};
++
++export default router;
+
+diff --git a/apps/api/src/uploads/r2.ts b/apps/api/src/uploads/r2.ts
+@@ -1,40 +1,40 @@
+ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+ 
+ const s3 = new S3Client({
+   endpoint: process.env.R2_ENDPOINT,
+   region: 'auto',
+   credentials: {
+     accessKeyId: process.env.R2_ACCESS_KEY_ID as string,
+     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY as string,
+   },
+   forcePathStyle: false,
+ });
+ 
+ export async function generatePresignedUpload(key: string, contentType = 'application/octet-stream') {
+   const command = new PutObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key, ContentType: contentType });
+-  const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
++  const url = await getSignedUrl(s3, command, { expiresIn: 300 });
+   return { uploadUrl: url, key };
+ }
+
+diff --git a/apps/api/src/tests/auth.register.test.ts b/apps/api/src/tests/auth.register.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/tests/auth.register.test.ts
+@@ -0,0 +1,40 @@
++import { describe, it, expect } from 'vitest';
++import Fastify from 'fastify';
++import { registerRoutes } from '../app/routes';
++
++describe('auth register', () => {
++  it('rejects missing password', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++    const res = await server.inject({
++      method: 'POST',
++      url: '/auth/register',
++      payload: { username: 'u'+Date.now(), email: `t${Date.now()}@example.com` }
++    });
++    expect(res.statusCode).toBe(400);
++  });
++
++  it('rejects short password', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++    const res = await server.inject({
++      method: 'POST',
++      url: '/auth/register',
++      payload: { username: 'u'+Date.now(), email: `t${Date.now()}@example.com`, password: '123' }
++    });
++    expect(res.statusCode).toBe(400);
++  });
++
++  it('registers with strong password', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++    const res = await server.inject({
++      method: 'POST',
++      url: '/auth/register',
++      payload: { username: 'u'+Date.now(), email: `t${Date.now()}@example.com`, password: 'Password123!' }
++    });
++    expect([200,201]).toContain(res.statusCode);
++    if (res.statusCode === 200) {
++      const body = JSON.parse(res.payload);
++      expect(body.token).toBeDefined();
++      expect(body.user).toBeDefined();
++    }
++  });
++});
+
+diff --git a/apps/api/src/tests/rooms.auth.test.ts b/apps/api/src/tests/rooms.auth.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/tests/rooms.auth.test.ts
+@@ -0,0 +1,120 @@
++import { describe, it, expect } from 'vitest';
++import Fastify from 'fastify';
++import { registerRoutes } from '../app/routes';
++
++describe('rooms auth & ownership', () => {
++  it('POST /rooms requires auth', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++    const res = await server.inject({ method: 'POST', url: '/rooms', payload: { name: 'r' } });
++    expect(res.statusCode).toBe(401);
++  });
++
++  it('POST /rooms sets owner from token and DELETE requires owner', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++
++    // register owner
++    const reg = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'owner'+Date.now(), email: `owner${Date.now()}@example.com`, password: 'Password123!' } });
++    const owner = JSON.parse(reg.payload);
++    const tokenOwner = owner.token;
++
++    // create room as owner
++    const r = await server.inject({ method: 'POST', url: '/rooms', payload: { name: 'roomA' }, headers: { Authorization: `Bearer ${tokenOwner}` } });
++    expect([200,201]).toContain(r.statusCode);
++    const room = JSON.parse(r.payload);
++
++    // register attacker
++    const reg2 = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'att'+Date.now(), email: `att${Date.now()}@example.com`, password: 'Password123!' } });
++    const attacker = JSON.parse(reg2.payload);
++    const tokenAtt = attacker.token;
++
++    // attacker tries to delete
++    const delAtt = await server.inject({ method: 'DELETE', url: `/rooms/${room.id}`, headers: { Authorization: `Bearer ${tokenAtt}` } });
++    expect([401,403]).toContain(delAtt.statusCode);
++
++    // owner deletes
++    const delOwner = await server.inject({ method: 'DELETE', url: `/rooms/${room.id}`, headers: { Authorization: `Bearer ${tokenOwner}` } });
++    expect([200,201]).toContain(delOwner.statusCode);
++  });
++
++  it('transfer-host requires owner (or admin)', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++
++    const reg = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'owner'+Date.now(), email: `owner${Date.now()}@example.com`, password: 'Password123!' } });
++    const owner = JSON.parse(reg.payload);
++    const tokenOwner = owner.token;
++
++    const reg2 = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'user2'+Date.now(), email: `u2${Date.now()}@example.com`, password: 'Password123!' } });
++    const user2 = JSON.parse(reg2.payload);
++
++    const r = await server.inject({ method: 'POST', url: '/rooms', payload: { name: 'roomB' }, headers: { Authorization: `Bearer ${tokenOwner}` } });
++    const room = JSON.parse(r.payload);
++
++    // attacker (user2) tries transfer
++    const transferAtt = await server.inject({ method: 'POST', url: '/rooms/transfer-host', payload: { roomId: room.id, newOwnerId: user2.user.id }, headers: { Authorization: `Bearer ${user2.token}` } });
++    expect([401,403]).toContain(transferAtt.statusCode);
++
++    // owner does transfer
++    const transferOk = await server.inject({ method: 'POST', url: '/rooms/transfer-host', payload: { roomId: room.id, newOwnerId: user2.user.id }, headers: { Authorization: `Bearer ${tokenOwner}` } });
++    expect([200,201]).toContain(transferOk.statusCode);
++  });
++});
+
+diff --git a/apps/api/src/tests/messages.auth.test.ts b/apps/api/src/tests/messages.auth.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/tests/messages.auth.test.ts
+@@ -0,0 +1,80 @@
++import { describe, it, expect } from 'vitest';
++import Fastify from 'fastify';
++import { registerRoutes } from '../app/routes';
++
++describe('messages access control', () => {
++  it('GET /messages requires membership for private rooms', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++
++    const reg = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'owner'+Date.now(), email: `owner${Date.now()}@example.com`, password: 'Password123!' } });
++    const owner = JSON.parse(reg.payload);
++
++    const r = await server.inject({ method: 'POST', url: '/rooms', payload: { name: 'privateRoom', isPrivate: true }, headers: { Authorization: `Bearer ${owner.token}` } });
++    const room = JSON.parse(r.payload);
++
++    // unauthenticated list
++    const listAnon = await server.inject({ method: 'GET', url: `/messages?roomId=${room.id}` });
++    expect([401,403]).toContain(listAnon.statusCode);
++
++    // owner posts message
++    const post = await server.inject({ method: 'POST', url: '/messages', payload: { roomId: room.id, content: 'hi' }, headers: { Authorization: `Bearer ${owner.token}` } });
++    expect([200,201]).toContain(post.statusCode);
++
++    // owner lists messages
++    const listOwner = await server.inject({ method: 'GET', url: `/messages?roomId=${room.id}`, headers: { Authorization: `Bearer ${owner.token}` } });
++    expect([200,201]).toContain(listOwner.statusCode);
++    if (listOwner.statusCode === 200) {
++      const body = JSON.parse(listOwner.payload);
++      expect(Array.isArray(body.messages)).toBe(true);
++    }
++  });
++});
+
+diff --git a/apps/api/src/tests/uploads.auth.test.ts b/apps/api/src/tests/uploads.auth.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/tests/uploads.auth.test.ts
+@@ -0,0 +1,80 @@
++import { describe, it, expect } from 'vitest';
++import Fastify from 'fastify';
++import { registerRoutes } from '../app/routes';
++
++describe('uploads security', () => {
++  it('POST /uploads/init requires auth and returns key prefix', async () => {
++    const server = Fastify();
++    await registerRoutes(server);
++
++    const reg = await server.inject({ method: 'POST', url: '/auth/register', payload: { username: 'u'+Date.now(), email: `u${Date.now()}@example.com`, password: 'Password123!' } });
++    const user = JSON.parse(reg.payload);
++
++    // unauthenticated
++    const anon = await server.inject({ method: 'POST', url: '/uploads/init', payload: { contentType: 'video/mp4' } });
++    expect([401,403]).toContain(anon.statusCode);
++
++    // authenticated and allowed contentType
++    const ok = await server.inject({ method: 'POST', url: '/uploads/init', payload: { contentType: 'video/mp4' }, headers: { Authorization: `Bearer ${user.token}` } });
++    expect([200,201]).toContain(ok.statusCode);
++    if (ok.statusCode === 200) {
++      const body = JSON.parse(ok.payload);
++      expect(body.key.startsWith(`uploads/`)).toBeTruthy();
++      expect(body.uploadUrl).toBeDefined();
++    }
++
++    // forbidden content type
++    const bad = await server.inject({ method: 'POST', url: '/uploads/init', payload: { contentType: 'text/plain' }, headers: { Authorization: `Bearer ${user.token}` } });
++    expect(bad.statusCode).toBe(400);
++  });
++});

@@ -1,0 +1,11 @@
+Listado rápido de archivos modificados/nuevos (ruta relativa):
+
+- apps/api/src/sockets/socket.ts
+- apps/api/src/modules/rooms/routes.ts
+- apps/api/src/modules/messages/routes.ts
+- apps/api/src/modules/uploads/routes.ts
+- apps/api/src/uploads/r2.ts
+- apps/api/src/modules/auth/routes.ts
+- apps/api/src/tests/uploads.test.ts (nuevo)
+- scripts/*.js (varios scripts añadidos)
+- p0_fixes.patch (patch aplicado)

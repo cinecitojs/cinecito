@@ -1,0 +1,16 @@
+{
+  "name": "cinecito-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --prefix ./apps/api run dev",
+    "dev:web": "npm --prefix ./apps/web run dev",
+    "build": "npm --prefix ./apps/api run build && npm --prefix ./apps/web run build"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.1"
+  }
+}

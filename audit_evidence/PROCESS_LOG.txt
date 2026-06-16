@@ -1,0 +1,19 @@
+Registro de acciones ejecutadas (resumen)
+
+- Creada carpeta audit_evidence/
+- Listado de scripts en /scripts/
+- Verificación de procesos: no se encontraron procesos activos del workspace
+- Resultado health: servicios reportados como OK durante pruebas (ver scripts/get_health.js)
+- Pruebas socket: ejecutadas con scripts socket_client_* y verificadas emisiones ACK y fallback
+- Tests unitarios relevantes: vitest ejecutado previamente; uploads.test.ts presente
+
+Comandos clave ejecutados (referencia):
+- node scripts/check_redis_ping.js
+- npm --prefix ./apps/api run dev
+- node scripts/register_user.js <url> <email> <name> <password>
+- node scripts/create_room.js <url> <token> <roomPayload>
+- node scripts/socket_client_with_ack.js <token> <roomId>
+- node scripts/socket_client_no_ack.js <token> <roomId>
+- node scripts/get_messages.js <roomId>
+
+Para más detalles revisar p0_fixes.patch y los scripts en /scripts.

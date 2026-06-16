@@ -1,0 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+@import "tailwindcss/base";
+
+@import "tailwindcss/components";
+
+@import "tailwindcss/utilities";
+
+
+:root{
+  --bg: #F6FBFF;
+  --surface: #FFFFFF;
+  --accent: #7CC8FF;
+  --accentDark: #1D6FA8;
+  --text: #0F1724;
+}
+
+html,body,#root{height:100%;}
+body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial; background:var(--bg); color:var(--text);}
+
+.container{max-width:1024px;margin:0 auto;padding:16px}
