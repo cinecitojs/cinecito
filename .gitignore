@@ -1,0 +1,40 @@
+# ── Dependencias ──────────────────────────────────────────────
+node_modules/
+**/node_modules/
+
+# ── Build / artefactos ────────────────────────────────────────
+dist/
+build/
+**/dist/
+**/build/
+*.tsbuildinfo
+
+# ── Prisma (cliente generado vive en node_modules) ────────────
+**/.prisma/
+
+# ── Secretos / entorno (NUNCA subir) ──────────────────────────
+# Se versionan solo los .env.example (sin valores reales).
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+logs/
+
+# ── Cobertura / tests ─────────────────────────────────────────
+coverage/
+
+# ── Sistema operativo / editor ────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ── Claude Code (memoria/estado local) ────────────────────────
+.claude/

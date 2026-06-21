@@ -1,0 +1,694 @@
+// apps/web/src/pages/Room.tsx
+// Sala con motor de video multi-fuente sincronizado, reconexión robusta y permisos.
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import {
+  ArrowLeft, Crown, Users, MessageSquare, Play, Settings2, Link as LinkIcon,
+  Clapperboard, Minimize2, Phone, PhoneOff, UserPlus, Inbox, Flag,
+} from 'lucide-react';
+import { roomsApi, messagesApi, uploadsApi } from '../lib/api';
+import { useAuthStore } from '../store/useAuthStore';
+import { useSocket, type ChatMessage, type RoomSession, type RoomPermissions } from '../hooks/useSocket';
+import { parseVideoUrl } from '../lib/videoSources';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import { Badge, Modal, Input, Button, Spinner, toast, ToastContainer } from '../components/ui';
+import { ParticipantsPanel, VideoQueue, InviteBanner, PermissionsPanel } from '../components/room';
+import VideoStage from '../components/room/VideoStage';
+import ChatPanel from '../components/room/ChatPanel';
+import VoicePanel from '../components/room/VoicePanel';
+import InviteModal from '../components/room/InviteModal';
+import FloatingWidget from '../components/FloatingWidget';
+import { useCall } from '../providers/CallProvider';
+import { getSettings } from '../store/useSettings';
+import { RequestAccessScreen, JoinRequestsPanel, type AccessState, type JoinRequest } from '../components/room/JoinRequests';
+import ReportModal, { type ReportTarget } from '../components/ReportModal';
+import RoomThemeBackdrop from '../components/room/RoomThemeBackdrop';
+import { useSupporter } from '../hooks/useSupporter';
+
+const DEFAULT_PERMS: RoomPermissions = {
+  addVideo: 'host', removeVideo: 'host', skip: 'host', pauseResume: 'everyone', seek: 'everyone',
+};
+
+type MobileTab = 'video' | 'chat' | 'sala';
+
+export default function Room() {
+  const { id: roomId } = useParams<{ id: string }>();
+  const navigate       = useNavigate();
+  const { user, token } = useAuthStore();
+
+  const [messages, setMessages]       = useState<ChatMessage[]>([]);
+  const [session, setSession]         = useState<RoomSession | null>(null);
+  const [onlineIds, setOnlineIds]     = useState<string[]>([]);
+  const [typingUserIds, setTypingIds] = useState<string[]>([]);
+  const [isHost, setIsHost]           = useState(false);
+  const [permissions, setPermissions] = useState<RoomPermissions>(DEFAULT_PERMS);
+  const [mobileTab, setMobileTab]     = useState<MobileTab>('video');
+  const [unreadChat, setUnreadChat]   = useState(0);
+
+  // ── Solo invitación: acceso por solicitud ──
+  const [accessState, setAccessState]   = useState<AccessState>('ok');
+  const [reqRoomName, setReqRoomName]   = useState<string | undefined>();
+  const [reqLoading, setReqLoading]     = useState(false);
+  const [requests, setRequests]         = useState<JoinRequest[]>([]);
+  const [pendingReqs, setPendingReqs]   = useState(0);
+  const [showRequests, setShowRequests] = useState(false);
+
+  // ── Reportes ──
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+
+  // ── Tema de sala (recompensa cosmética; solo si está desbloqueado) ──
+  const { data: supporter } = useSupporter();
+  const activeTheme = supporter?.theme && supporter.unlockedThemes?.includes(supporter.theme) ? supporter.theme : null;
+
+  // Monta UN solo layout según el viewport (no por CSS): si se renderizan
+  // los dos, hay dos <VideoStage> y `display:none` NO frena el audio → audio doble.
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+
+  // ── Modo cine (#3) + widgets flotantes PiP (#4) + salida (#1) ──
+  const [theater, setTheater]   = useState(() => localStorage.getItem('cinecito_theater') === '1');
+  const [showChatW, setShowChatW] = useState(() => localStorage.getItem('cinecito_w_chat') !== '0');
+  const [showCallW, setShowCallW] = useState(() => localStorage.getItem('cinecito_w_call') !== '0');
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  useEffect(() => { localStorage.setItem('cinecito_theater', theater ? '1' : '0'); }, [theater]);
+  useEffect(() => { localStorage.setItem('cinecito_w_chat', showChatW ? '1' : '0'); }, [showChatW]);
+  useEffect(() => { localStorage.setItem('cinecito_w_call', showCallW ? '1' : '0'); }, [showCallW]);
+
+  // Reloj: offset entre el servidor y este cliente.
+  const serverOffsetRef = useRef(0);
+  const [serverOffset, setServerOffset] = useState(0);
+
+  // Modal de agregar video (único, multi-fuente).
+  const [addOpen, setAddOpen]   = useState(false);
+  const [addUrl, setAddUrl]     = useState('');
+  const [addTitle, setAddTitle] = useState('');
+  const [adding, setAdding]     = useState(false);
+  const [permsOpen, setPermsOpen] = useState(false);
+
+  const parsed = addUrl.trim() ? parseVideoUrl(addUrl) : null;
+
+  const { data: room, refetch } = useQuery({
+    queryKey: ['room', roomId],
+    queryFn:  () => roomsApi.getById(roomId!).then((r) => r.data),
+    enabled:  !!roomId,
+  });
+
+  const socket = useSocket({
+    token,
+    onDisconnect: () => toast('Conexión perdida. Reconectando…', 'error'),
+  });
+
+  // La llamada vive a nivel de app (CallProvider) → sobrevive al salir de la sala.
+  const voice = useCall();
+  const inVoiceHere = voice.inVoice && voice.callRoomId === roomId;
+
+  // Ref siempre actual de `voice` para usar dentro de listeners globales sin
+  // re-suscribir en cada render ni capturar estado obsoleto.
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
+
+  // Salir con confirmación solo si la llamada activa es de ESTA sala (#1).
+  const requestLeave = useCallback(() => {
+    const v = voiceRef.current;
+    if (v.inVoice && v.callRoomId === roomId) setLeaveOpen(true);
+    else navigate('/home');
+  }, [navigate, roomId]);
+  const cutCallAndLeave = useCallback(() => {
+    voiceRef.current.leaveVoice();
+    setLeaveOpen(false);
+    navigate('/home');
+  }, [navigate]);
+  // Opción 2: salir de la sala PERO mantener la llamada (sigue en el widget flotante).
+  const leaveKeepCall = useCallback(() => {
+    setLeaveOpen(false);
+    navigate('/home');
+  }, [navigate]);
+
+  // Aviso del navegador al cerrar/recargar la pestaña con llamada activa (#1).
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (voiceRef.current.inVoice) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
+
+  // Atajos de teclado (#7): F = modo cine, M = mute, V = cámara.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      const v = voiceRef.current;
+      if (e.key === 'f' || e.key === 'F') { e.preventDefault(); setTheater((t) => !t); }
+      else if (v.inVoice && (e.key === 'm' || e.key === 'M')) v.toggleMute();
+      else if (v.inVoice && (e.key === 'v' || e.key === 'V')) v.toggleVideo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const applyJoinResult = useCallback((result: any) => {
+    setMessages(result.messages || []);
+    setSession(result.session);
+    setOnlineIds(result.onlineUserIds || []);
+    setIsHost(!!result.isHost);
+    if (result.permissions) setPermissions(result.permissions);
+    if (typeof result.serverTime === 'number') {
+      const off = result.serverTime - Date.now();
+      serverOffsetRef.current = off;
+      setServerOffset(off);
+    }
+  }, []);
+
+  // Unirse a la sala — y RE-UNIRSE automáticamente en cada (re)conexión.
+  useEffect(() => {
+    if (!roomId) return;
+    let alive = true;
+
+    const join = async () => {
+      try {
+        const result = await socket.joinRoom(roomId);
+        if (alive) { applyJoinResult(result); setAccessState('ok'); }
+      } catch (err: any) {
+        if (!alive) return;
+        if (err?.code === 'request_required') {
+          // Sala "Solo invitación": mostrar pantalla de solicitud (sin pisar 'requested'/'rejected').
+          if (err.roomName) setReqRoomName(err.roomName);
+          setAccessState((s) => (s === 'ok' ? 'request' : s));
+        } else {
+          toast('No se pudo unir a la sala', 'error');
+        }
+      }
+    };
+
+    // Re-join en connect/reconnect (el socket nuevo no está unido en el server).
+    const offConnect = socket.on('connect', () => { void join(); });
+    // Primer intento (por si ya está conectado).
+    if (socket.isConnected()) void join();
+
+    return () => {
+      alive = false;
+      offConnect();
+      socket.leaveRoom(roomId);
+    };
+  }, [roomId, token]);
+
+  // Re-sincronizar al volver a la pestaña.
+  useEffect(() => {
+    const onVis = async () => {
+      if (document.visibilityState === 'visible' && roomId) {
+        const { session: s, serverTime } = await socket.requestSync(roomId);
+        if (s) setSession(s);
+        const off = serverTime - Date.now();
+        serverOffsetRef.current = off;
+        setServerOffset(off);
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [roomId]);
+
+  // Eventos de socket.
+  useEffect(() => {
+    if (!roomId) return;
+    const offs = [
+      socket.on<ChatMessage>('message', (msg) => {
+        setMessages((p) => [...p, msg]);
+        if (mobileTab !== 'chat') setUnreadChat((n) => n + 1);
+        // Notificación del navegador (Configuración → Notificaciones): solo si la
+        // pestaña está oculta, el aviso está activado, hay permiso, y no es propio.
+        if (document.hidden && msg.userId && msg.userId !== user?.id
+            && getSettings().notifyMessages
+            && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try {
+            new Notification(`${msg.user?.username || 'Mensaje'} · ${room?.name || 'Cinecito'}`, {
+              body: msg.content?.slice(0, 120), icon: '/pochi.png', tag: `room-${roomId}`,
+            });
+          } catch { /* */ }
+        }
+      }),
+      // Mensajes de sistema efímeros (join/leave/transferencia): se muestran, no se persisten.
+      socket.on<ChatMessage>('system', (msg) => setMessages((p) => [...p, msg])),
+      socket.on<{ messageId: string; reactions: Record<string, string[]> }>('message-reaction-update',
+        ({ messageId, reactions }) => setMessages((p) => p.map((m) => m.id === messageId ? { ...m, reactions } : m))),
+      socket.on<{ session: RoomSession; serverTime: number }>('room-state', ({ session: s, serverTime }) => {
+        setSession(s);
+        if (typeof serverTime === 'number') {
+          const off = serverTime - Date.now();
+          serverOffsetRef.current = off;
+          setServerOffset(off);
+        }
+      }),
+      socket.on<{ userId: string }>('user-joined', ({ userId }) => {
+        if (userId) setOnlineIds((p) => [...new Set([...p, userId])]);
+        refetch();
+      }),
+      socket.on<{ userId: string }>('user-left', ({ userId }) =>
+        setOnlineIds((p) => p.filter((id) => id !== userId))),
+      socket.on<{ typingUserIds: string[] }>('typing-update', ({ typingUserIds }) =>
+        setTypingIds(typingUserIds)),
+      socket.on<{ permissions: RoomPermissions }>('permissions-updated', ({ permissions }) =>
+        setPermissions(permissions)),
+      socket.on('video-added',   () => refetch()),
+      socket.on('video-removed', () => refetch()),
+      socket.on<{ newHostId: string }>('host-changed', ({ newHostId }) => {
+        setIsHost(newHostId === user?.id);
+        if (newHostId === user?.id) toast('Ahora controlás la reproducción 🎬', 'success');
+        refetch();
+      }),
+      // ── Solo invitación ──
+      socket.on<{ request: JoinRequest; pending: number }>('join-request-new', ({ request, pending }) => {
+        setRequests((prev) => [request, ...prev.filter((r) => r.userId !== request.userId)]);
+        if (typeof pending === 'number') setPendingReqs(pending);
+        toast(`${request.username} quiere entrar a la sala`, 'info');
+      }),
+      socket.on<{ requests: JoinRequest[]; pending: number }>('join-requests-updated', ({ requests: rs, pending }) => {
+        if (Array.isArray(rs)) setRequests(rs);
+        if (typeof pending === 'number') setPendingReqs(pending);
+      }),
+      socket.on<{ status: string }>('join-request-resolved', ({ status }) => {
+        if (status === 'accepted') rejoin();
+        else if (status === 'rejected') setAccessState('rejected');
+      }),
+    ];
+    return () => offs.forEach((off) => off());
+  }, [roomId, mobileTab, user?.id]);
+
+  useEffect(() => { if (mobileTab === 'chat') setUnreadChat(0); }, [mobileTab]);
+
+  useEffect(() => {
+    document.title = unreadChat > 0 && mobileTab !== 'chat'
+      ? `(${unreadChat}) ${room?.name || 'Sala'} — Cinecito`
+      : `${room?.name || 'Sala'} — Cinecito`;
+    return () => { document.title = 'Cinecito'; };
+  }, [unreadChat, room?.name, mobileTab]);
+
+  const sendMessage = useCallback(async (content: string) => {
+    if (!roomId) return;
+    try { await socket.sendMessage(roomId, content); }
+    catch { await messagesApi.send(roomId, content); }
+  }, [roomId]);
+
+  const loadMoreMessages = useCallback(async (before: string): Promise<boolean> => {
+    if (!roomId) return false;
+    try {
+      const { data } = await messagesApi.list(roomId, { before, limit: 30 });
+      const older = data.messages as ChatMessage[];
+      if (older.length > 0) {
+        setMessages((prev) => {
+          const ids = new Set(prev.map((m) => m.id));
+          return [...older.filter((m) => !ids.has(m.id)), ...prev];
+        });
+      }
+      return data.hasMore;
+    } catch { return false; }
+  }, [roomId]);
+
+  // ── Solo invitación: re-ingreso al ser aceptado, solicitar, responder (host) ──
+  const rejoin = useCallback(async () => {
+    if (!roomId) return;
+    try {
+      const result = await socket.joinRoom(roomId);
+      applyJoinResult(result);
+      setAccessState('ok');
+      refetch();
+    } catch (err: any) {
+      if (err?.code === 'request_required') setAccessState('request');
+    }
+  }, [roomId, applyJoinResult, refetch]);
+
+  const submitAccessRequest = useCallback(async () => {
+    if (!roomId) return;
+    setReqLoading(true);
+    const res = await socket.requestJoin(roomId);
+    setReqLoading(false);
+    if (res?.error) { toast(res.message || 'No se pudo enviar la solicitud', 'error'); return; }
+    if (res?.status === 'accepted') { rejoin(); return; }
+    setAccessState('requested');
+  }, [roomId, rejoin]);
+
+  const respondRequest = useCallback(async (uid: string, action: 'accept' | 'reject' | 'ignore') => {
+    if (!roomId) return;
+    setRequests((prev) => prev.map((r) => r.userId === uid
+      ? { ...r, status: action === 'accept' ? 'accepted' : action === 'reject' ? 'rejected' : 'ignored' } : r));
+    await socket.respondJoinRequest(roomId, uid, action);
+  }, [roomId]);
+
+  // Cargar la bandeja del host (solo salas "Solo invitación").
+  useEffect(() => {
+    if (!roomId || !isHost || !(room as any)?.inviteOnly) return;
+    socket.listJoinRequests(roomId).then(({ requests: rs, pending }) => {
+      setRequests(rs); setPendingReqs(pending);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, isHost, (room as any)?.inviteOnly]);
+
+  // Permisos derivados.
+  const canControl = isHost || permissions.pauseResume === 'everyone' || permissions.seek === 'everyone';
+  const canAdd     = isHost || permissions.addVideo === 'everyone';
+  const canRemove  = isHost || permissions.removeVideo === 'everyone';
+  const canSelect  = isHost || permissions.skip === 'everyone';
+
+  const submitAddVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roomId || !parsed?.valid) return;
+    setAdding(true);
+    try {
+      await uploadsApi.addUrl({ roomId, url: parsed.url, title: addTitle.trim() || undefined });
+      toast(`${parsed.label} agregado`, 'success');
+      setAddOpen(false); setAddUrl(''); setAddTitle('');
+    } catch (err: any) {
+      toast(err?.response?.data?.error || 'No se pudo agregar el video', 'error');
+    } finally { setAdding(false); }
+  };
+
+  const savePermissions = async (next: RoomPermissions) => {
+    setPermissions(next);
+    if (!roomId) return;
+    try { await socket.updatePermissions(roomId, next); }
+    catch { toast('No se pudieron guardar los permisos', 'error'); }
+  };
+
+  const currentVideo = room?.videos?.find((v: any) => v.id === session?.currentVideoId) || null;
+
+  const onlineUsers = (room?.members || []).map((m: any) => ({
+    id: m.userId, username: m.user?.username || m.displayName,
+  })).filter((m: any) => m.id);
+  if (room?.owner && !onlineUsers.find((u: any) => u.id === room.owner.id)) {
+    onlineUsers.unshift({ id: room.owner.id, username: room.owner.username });
+  }
+
+  // Sala "Solo invitación" sin acceso: pantalla de solicitud (no depende del fetch de la sala,
+  // que para un no-miembro devuelve 403).
+  if (accessState !== 'ok') {
+    return (
+      <RequestAccessScreen
+        roomName={reqRoomName || room?.name}
+        state={accessState}
+        loading={reqLoading}
+        onRequest={submitAccessRequest}
+      />
+    );
+  }
+
+  if (!room) {
+    return <div className="min-h-screen flex items-center justify-center"><Spinner size="lg" /></div>;
+  }
+
+  const stageProps = {
+    video: currentVideo, session, serverOffset, isController: canControl,
+    onPlay:  (t: number) => roomId && socket.videoPlay(roomId, t),
+    onPause: (t: number) => roomId && socket.videoPause(roomId, t),
+    onSeek:  (t: number) => roomId && socket.videoSeek(roomId, t),
+  };
+
+  const queueProps = {
+    videos: room.videos || [],
+    currentVideoId: session?.currentVideoId,
+    canAdd, canRemove, canSelect,
+    onSelect: (id: string) => roomId && socket.videoSelect(roomId, id),
+    onAddVideo: () => setAddOpen(true),
+    onRemove: async (id: string) => {
+      try { await uploadsApi.deleteVideo(id); }
+      catch { toast('No se pudo eliminar', 'error'); }
+    },
+    onReportVideo: (v: { id: string; title?: string; url?: string }) =>
+      setReportTarget({ type: 'link', id: v.id, context: [roomId, v.url, v.title].filter(Boolean).join(' · '), label: v.title || v.url || 'este enlace' }),
+  };
+
+  const participantsProps = {
+    room, onlineUserIds: onlineIds, currentUserId: user?.id, isHost,
+    onTransferHost: (uid: string) =>
+      roomId && socket.transferHost(roomId, uid)
+        .then(() => toast('Control transferido', 'success'))
+        .catch(() => toast('No se pudo transferir', 'error')),
+    onReportUser: (u: { id: string; username: string }) =>
+      setReportTarget({ type: 'user', id: u.id, context: roomId, label: u.username }),
+  };
+
+  const voiceProps = {
+    inVoice: inVoiceHere, muted: voice.muted, videoOn: voice.videoOn,
+    connecting: voice.connecting, error: voice.error,
+    peers: inVoiceHere ? voice.peers : {}, speaking: inVoiceHere ? voice.speaking : {},
+    currentUsername: user?.username || 'Vos', localStream: voice.localStream,
+    onJoin: (withVideo?: boolean) => roomId && voice.joinVoice(roomId, withVideo),
+    onLeave: voice.leaveVoice,
+    onToggleMute: voice.toggleMute, onToggleVideo: voice.toggleVideo,
+  };
+
+  const chatPanelProps = {
+    roomId: roomId!, messages, typingUserIds,
+    onSend: sendMessage, onLoadMore: loadMoreMessages,
+    currentUserId: user?.id, onlineUsers,
+    onStartTyping: socket.startTyping, onStopTyping: socket.stopTyping,
+    onReact: (messageId: string, emoji: string) => roomId && socket.reactToMessage(roomId, messageId, emoji),
+    onReportMessage: (msg: ChatMessage) =>
+      setReportTarget({
+        type: 'message', id: msg.id,
+        context: [roomId, (msg.content || '').slice(0, 140)].filter(Boolean).join(' · '),
+        label: `el mensaje de ${msg.user?.username || 'un usuario'}`,
+      }),
+  };
+
+  return (
+    <div className="relative h-[100dvh] overflow-hidden flex flex-col bg-[var(--bg)] dark:bg-dark-bg">
+      {activeTheme && <RoomThemeBackdrop themeId={activeTheme} />}
+      <ToastContainer />
+
+      <header className="shrink-0 h-14 border-b border-[var(--border)] bg-surface/90 dark:bg-dark-surface/90 backdrop-blur-sm flex items-center gap-3 px-4 sticky top-0 z-20">
+        <button onClick={requestLeave}
+          className="p-2 rounded-xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-colors shrink-0"
+          aria-label="Salir de la sala" title="Salir de la sala">
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div className="flex-1 min-w-0 flex items-center gap-3">
+          <h1 className="font-bold text-sm leading-tight truncate hidden sm:block">{room.name}</h1>
+          <InviteBanner code={room.code} roomName={room.name} />
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => setInviteOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-xs font-semibold"
+            aria-label="Invitar amigos" title="Invitar amigos">
+            <UserPlus className="w-4 h-4" /> <span className="hidden sm:inline">Invitar</span>
+          </button>
+          {isDesktop && (
+            <button onClick={() => setTheater((t) => !t)}
+              className={`p-2 rounded-xl transition-colors ${theater ? 'bg-primary text-white' : 'hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2'}`}
+              aria-label="Modo cine" title="Modo cine (F)">
+              {theater ? <Minimize2 className="w-4 h-4" /> : <Clapperboard className="w-4 h-4" />}
+            </button>
+          )}
+          {isHost && (room as any)?.inviteOnly && (
+            <button onClick={() => setShowRequests(true)}
+              className="relative p-2 rounded-xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-colors"
+              aria-label="Solicitudes de acceso" title="Solicitudes de acceso">
+              <Inbox className="w-4 h-4" />
+              {pendingReqs > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-secondary text-white text-[10px] flex items-center justify-center font-bold">
+                  {pendingReqs > 9 ? '9+' : pendingReqs}
+                </span>
+              )}
+            </button>
+          )}
+          {isHost && (
+            <>
+              <button onClick={() => setPermsOpen(true)}
+                className="p-2 rounded-xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-colors"
+                aria-label="Permisos de la sala" title="Permisos de la sala">
+                <Settings2 className="w-4 h-4" />
+              </button>
+              <Badge color="yellow" className="hidden sm:flex"><Crown className="w-3 h-3" /> Host</Badge>
+            </>
+          )}
+          <button onClick={() => setReportTarget({ type: 'room', id: roomId!, context: room.name, label: `la sala "${room.name}"` })}
+            className="p-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/30 text-[var(--text-muted)] hover:text-red-500 transition-colors"
+            aria-label="Reportar sala" title="Reportar sala">
+            <Flag className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-online" />
+            <span className="text-xs text-[var(--text-muted)]">{onlineIds.length}</span>
+          </div>
+        </div>
+      </header>
+
+      {/* Solo se monta UN layout a la vez (desktop O mobile) para evitar dos
+          reproductores simultáneos reproduciendo el mismo audio. */}
+      {isDesktop ? (
+        theater ? (
+        /* ── Modo cine inmersivo: video full + widgets flotantes PiP (#3/#4) ── */
+        <div className="flex-1 flex flex-col min-h-0 relative bg-black/[0.04] dark:bg-black/40">
+          <div className="flex-1 min-h-0 flex items-center justify-center p-3 overflow-hidden">
+            {/* Acota el ancho para que el alto 16:9 entre completo en el área disponible */}
+            <div className="w-full mx-auto" style={{ maxWidth: 'calc((100dvh - 6rem) * 16 / 9)' }}>
+              <VideoStage {...stageProps} />
+            </div>
+          </div>
+
+          {showChatW && (
+            <FloatingWidget id="chat" title="Chat" width={300} bodyHeight={380} minWidth={240}
+              sizePresets={[{ w: 260, h: 300 }, { w: 340, h: 420 }, { w: 440, h: 560 }]}
+              accentClass="border-primary/30" onClose={() => setShowChatW(false)}
+              icon={<MessageSquare className="w-3.5 h-3.5 text-primary shrink-0" />}
+              defaultPos={{ x: Math.max(8, window.innerWidth - 320), y: 76 }}>
+              <ChatPanel {...chatPanelProps} hideHeader />
+            </FloatingWidget>
+          )}
+          {showCallW && (
+            <FloatingWidget id="call" title="Llamada" width={232} bodyHeight={260} centerBody
+              sizePresets={[{ w: 200, h: 210 }, { w: 264, h: 300 }, { w: 340, h: 400 }]}
+              accentClass="border-secondary/40" onClose={() => setShowCallW(false)}
+              icon={<Phone className="w-3.5 h-3.5 text-secondary shrink-0" />}
+              defaultPos={{ x: 16, y: 76 }}>
+              <div className="p-2 w-full"><VoicePanel {...voiceProps} /></div>
+            </FloatingWidget>
+          )}
+
+          {/* Toolbar para reabrir widgets ocultos */}
+          {(!showChatW || !showCallW) && (
+            <div className="absolute bottom-3 right-3 flex gap-2 z-40">
+              {!showCallW && (
+                <button onClick={() => setShowCallW(true)} title="Mostrar llamada" aria-label="Mostrar llamada"
+                  className="px-3 py-2 rounded-xl bg-surface dark:bg-dark-surface border border-[var(--border)] shadow-cine hover:border-secondary transition-colors flex items-center gap-1.5 text-xs font-semibold">
+                  <Phone className="w-4 h-4 text-secondary" /> Llamada
+                </button>
+              )}
+              {!showChatW && (
+                <button onClick={() => setShowChatW(true)} title="Mostrar chat" aria-label="Mostrar chat"
+                  className="px-3 py-2 rounded-xl bg-surface dark:bg-dark-surface border border-[var(--border)] shadow-cine hover:border-primary transition-colors flex items-center gap-1.5 text-xs font-semibold">
+                  <MessageSquare className="w-4 h-4 text-primary" /> Chat
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        ) : (
+        /* ── Layout normal de escritorio ── */
+        <div className="flex-1 flex gap-4 p-4 min-h-0">
+          {/* Columna principal: si el video + cola exceden el alto, scrollea ACÁ (no rompe el chat) */}
+          <div className="flex-1 flex flex-col gap-4 min-w-0 min-h-0 overflow-y-auto">
+            <VideoStage {...stageProps} />
+            <VideoQueue {...queueProps} />
+          </div>
+          {/* Columna lateral: participantes + voz arriba (alto natural, sin que el
+              flex los comprima y recorte sus controles), chat con su scroll interno */}
+          <div className="w-72 shrink-0 flex flex-col gap-4 min-h-0 overflow-y-auto">
+            <div className="shrink-0"><ParticipantsPanel {...participantsProps} /></div>
+            <div className="shrink-0"><VoicePanel {...voiceProps} /></div>
+            <div className="flex-1 min-h-[16rem]"><ChatPanel {...chatPanelProps} /></div>
+          </div>
+        </div>
+        )
+      ) : (
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 min-h-0 flex flex-col">
+          {mobileTab === 'video' && (
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+              {/* Acota el ANCHO del video para que su alto 16:9 entre completo en
+                  cualquier orientación: full-width en vertical, letterbox en horizontal. */}
+              <div className="mx-auto w-full" style={{ maxWidth: 'min(100%, calc((100dvh - 11rem) * 16 / 9))' }}>
+                <VideoStage {...stageProps} />
+              </div>
+              <VideoQueue {...queueProps} />
+            </div>
+          )}
+          {mobileTab === 'chat' && (
+            /* Llena por flex (sin alturas fijas mágicas) → el chat usa su scroll interno y nunca se corta */
+            <div className="flex-1 min-h-0 p-3"><ChatPanel {...chatPanelProps} /></div>
+          )}
+          {mobileTab === 'sala' && (
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+              <ParticipantsPanel {...participantsProps} />
+              <VoicePanel {...voiceProps} />
+            </div>
+          )}
+        </div>
+        <div className="shrink-0 border-t border-[var(--border)] bg-surface/95 dark:bg-dark-surface/95 backdrop-blur-sm flex">
+          {([
+            { key: 'video' as const, icon: <Play className="w-5 h-5" />,          label: 'Video' },
+            { key: 'chat'  as const, icon: <MessageSquare className="w-5 h-5" />, label: 'Chat', badge: unreadChat },
+            { key: 'sala'  as const, icon: <Users className="w-5 h-5" />,         label: 'Sala' },
+          ]).map((t) => (
+            <button key={t.key} onClick={() => setMobileTab(t.key)}
+              className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs font-semibold transition-colors relative
+                ${mobileTab === t.key ? 'text-primary' : 'text-[var(--text-muted)]'}`}>
+              {t.icon}{t.label}
+              {'badge' in t && (t.badge ?? 0) > 0 && mobileTab !== t.key && (
+                <span className="absolute top-2 right-[calc(50%-14px)] min-w-4 h-4 px-1 rounded-full bg-primary text-white text-[10px] flex items-center justify-center font-bold">
+                  {(t.badge ?? 0) > 9 ? '9+' : t.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+      )}
+
+      {/* Modal agregar video (multi-fuente) */}
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Agregar video">
+        <form onSubmit={submitAddVideo} className="space-y-4">
+          <div className="text-center"><LinkIcon className="w-12 h-12 text-primary mx-auto opacity-60" /></div>
+          <Input label="Enlace del video" type="url" required autoFocus
+            placeholder="YouTube, Vimeo, .m3u8 o .mp4…"
+            value={addUrl} onChange={(e) => setAddUrl(e.target.value)} />
+          {parsed && (
+            <p className={`text-xs ${parsed.valid ? 'text-[var(--text-muted)]' : 'text-red-400'}`}>
+              {parsed.valid ? `Detectado: ${parsed.label}` : parsed.error}
+            </p>
+          )}
+          <Input label="Título (opcional)" placeholder="Nombre del video"
+            value={addTitle} onChange={(e) => setAddTitle(e.target.value)} />
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => setAddOpen(false)} className="flex-1">Cancelar</Button>
+            <Button type="submit" loading={adding} disabled={!parsed?.valid} className="flex-1">Agregar</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal permisos */}
+      <Modal open={permsOpen} onClose={() => setPermsOpen(false)} title="Permisos de la sala">
+        <PermissionsPanel permissions={permissions} onChange={savePermissions} />
+      </Modal>
+
+      {/* Modal invitar amigos (#5) */}
+      <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invitar amigos">
+        <InviteModal roomId={roomId!} roomCode={room.code} roomName={room.name} isHost={isHost} />
+      </Modal>
+
+      {/* Bandeja de solicitudes (Solo invitación) */}
+      <Modal open={showRequests} onClose={() => setShowRequests(false)} title="Solicitudes de acceso">
+        <JoinRequestsPanel requests={requests} onRespond={respondRequest} />
+      </Modal>
+
+      {/* Reportar contenido/conducta */}
+      <ReportModal open={!!reportTarget} onClose={() => setReportTarget(null)} target={reportTarget} />
+
+      {/* Modal de salida con llamada activa (#1) */}
+      <Modal open={leaveOpen} onClose={() => setLeaveOpen(false)} title="¿Seguro que querés salir de la sala?">
+        <div className="space-y-4">
+          <div className="flex justify-center">
+            <span className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <PhoneOff className="w-6 h-6 text-red-500" />
+            </span>
+          </div>
+          <p className="text-sm text-[var(--text-muted)] text-center leading-relaxed">
+            Estás conectado a una llamada de voz o video. Elegí cómo querés salir.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Button variant="danger" onClick={cutCallAndLeave} className="w-full">
+              <PhoneOff className="w-4 h-4" /> Cortar llamada y salir
+            </Button>
+            <Button variant="secondary" onClick={leaveKeepCall} className="w-full">
+              <Phone className="w-4 h-4" /> Salir y mantener la llamada
+            </Button>
+            <Button variant="ghost" onClick={() => setLeaveOpen(false)} className="w-full">
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}

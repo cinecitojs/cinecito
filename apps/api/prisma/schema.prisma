@@ -1,0 +1,195 @@
+// ============================================================
+// apps/api/prisma/schema.prisma  — FASE 5
+// Agrega: description opcional + índice para listar salas públicas
+// REEMPLAZA el schema existente
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  HOST
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String?  @unique
+  username  String
+  password  String?
+  role      Role     @default(USER)
+  avatar    String?
+  isGuest   Boolean  @default(false)
+  // ── Moderación (base para suspensión/bloqueo/eliminación) ──
+  // status: active | suspended | blocked | deleted. suspendedUntil define el fin
+  // de una suspensión temporal. statusReason guarda el motivo (auditoría).
+  status        String    @default("active")
+  statusReason  String?
+  suspendedUntil DateTime?
+  // ── Apoyo voluntario (recompensas COSMÉTICAS; se otorgan solo tras pago confirmado) ──
+  // supporterTier: amigo | colaborador | patrocinador (null = no es supporter).
+  // supporterBadge: id de insignia mostrada. supporterTheme: tema de sala seleccionado
+  // (debe estar desbloqueado por el tier). supporterAnonymous: ocultar del muro.
+  supporterTier      String?
+  supporterSince     DateTime?
+  supporterBadge     String?
+  supporterTheme     String?
+  supporterAnonymous Boolean   @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rooms         Room[]            @relation("RoomOwner")
+  messages      Message[]
+  members       RoomMember[]
+  consents      LegalAcceptance[]
+  reportsMade   Report[]          @relation("Reporter")
+  contributions Contribution[]
+}
+
+// ── Contribuciones de apoyo voluntario ───────────────────────
+// NO otorga recompensas por sí sola: las recompensas se conceden cuando el pago se
+// CONFIRMA (status='confirmed') vía webhook del proveedor. provider: stripe |
+// mercadopago | dev. providerRef: id del pago (idempotencia del webhook).
+model Contribution {
+  id          String    @id @default(uuid())
+  userId      String?
+  tier        String
+  amount      Int
+  currency    String    @default("USD")
+  frequency   String    @default("once") // once | monthly
+  provider    String?   // stripe | mercadopago | dev
+  providerRef String?
+  status      String    @default("pending") // pending | confirmed | failed | cancelled
+  message     String?
+  anonymous   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  confirmedAt DateTime?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerRef])
+  @@index([userId])
+  @@index([status])
+}
+
+// ── Evidencia de consentimiento legal (append-only) ──────────
+// Una fila por documento aceptado (terms | privacy | cookies | marketing) con la
+// versión vigente al aceptar, IP y user-agent. Es la prueba de cumplimiento.
+model LegalAcceptance {
+  id         String   @id @default(uuid())
+  userId     String
+  docType    String   // terms | privacy | cookies | marketing
+  docVersion String
+  accepted   Boolean  @default(true)
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, docType])
+  @@index([userId, createdAt])
+}
+
+// ── Reportes de contenido/conducta ───────────────────────────
+// targetType: user | room | message | link. context guarda info extra (id de sala,
+// fragmento del mensaje, URL enlazada). reason: copyright | spam | harassment |
+// impersonation | illegal | other. status: open | reviewing | actioned | dismissed.
+model Report {
+  id         String    @id @default(uuid())
+  reporterId String?
+  targetType String
+  targetId   String
+  context    String?
+  reason     String
+  details    String?
+  status     String    @default("open")
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  reporter User? @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+
+  @@index([status, targetType])
+  @@index([targetType, targetId])
+}
+
+model Room {
+  id             String  @id @default(uuid())
+  code           String  @unique
+  name           String
+  description    String?
+  ownerId        String?
+  isPrivate      Boolean @default(true)
+  // Modo "Solo invitación": la sala NO acepta ingreso por código; solo se entra
+  // por invitación o solicitud aprobada por el host. Es un modo aparte de privada
+  // (que conserva su lógica). public=!isPrivate · private=isPrivate&&!inviteOnly · invite=inviteOnly
+  inviteOnly     Boolean @default(false)
+  currentVideoId String?
+  // Permisos configurables por sala. Cada acción es "host" (solo el controlador)
+  // o "everyone" (colaborativo). Si es null, se aplican defaults seguros en código.
+  // Forma: { addVideo, removeVideo, skip, pauseResume, seek }
+  permissions    Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  owner   User?        @relation("RoomOwner", fields: [ownerId], references: [id])
+  members RoomMember[]
+  messages Message[]
+  videos  VideoMeta[]
+
+  @@index([code])
+  // Índice para listar/ordenar salas públicas eficientemente
+  @@index([isPrivate, updatedAt])
+}
+
+model RoomMember {
+  id          String   @id @default(uuid())
+  roomId      String
+  userId      String?
+  displayName String
+  isHost      Boolean  @default(false)
+  joinedAt    DateTime @default(now())
+
+  room Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Un usuario registrado solo puede ser miembro una vez por sala.
+  // (userId NULL — invitados anónimos — quedan exentos: Postgres trata NULL como distinto.)
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  roomId    String
+  userId    String?
+  content   String
+  createdAt DateTime @default(now())
+
+  room Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([roomId, createdAt])
+}
+
+model VideoMeta {
+  id        String   @id @default(uuid())
+  roomId    String
+  source    String   @default("upload")
+  url       String
+  title     String?
+  duration  Int?
+  createdAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+}

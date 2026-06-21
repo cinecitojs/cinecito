@@ -1,0 +1,250 @@
+/* ============================================================
+   apps/web/src/styles/index.css
+   Identidad Cinecito — "cine de noche": celeste neón, rosa Pochi,
+   lavanda, ámbar de marquesina. Dark = sala de proyección (sin negro puro).
+   Tipografía: Fredoka (display) + Nunito (cuerpo) + Pacifico (wordmark).
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Fredoka:wght@400;500;600;700&family=Pacifico&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Variables de color ─────────────────────────────────── */
+:root {
+  --radius: 1.25rem;
+
+  /* Light mode — lienzo crema-celeste (mantiene personalidad) */
+  --bg:         #F2F8FF;
+  --surface:    #FFFFFF;
+  --surface-2:  #E9F3FC;
+  --border:     #D6E7F5;
+  --text:       #122036;
+  --text-muted: #6A7C95;
+
+  /* Brand (gira alrededor de Pochi) — primary fijo = match con Tailwind */
+  --primary:          #6ECBF5;
+  --primary-dark:     #1D6FA8;
+  --primary-fg:       #FFFFFF;
+  --secondary:        #FF8FB0;
+  --secondary-fg:     #5A1430;
+  --accent:           #C9B6FF;
+  --accent-fg:        #3C2F73;
+  --marquee:          #FFB845;
+
+  /* Semánticos */
+  --success: #34C77B;
+  --warning: #FFB845;
+  --error:   #FB6F73;
+  --online:  #34C77B;
+
+  --glow: 0 0 0 transparent;
+  --font-display: 'Fredoka', 'Nunito', ui-sans-serif, system-ui, sans-serif;
+}
+
+.dark {
+  /* Sala de proyección: azul noche profundo, superficies elevadas, nunca negro */
+  --bg:         #0E1726;
+  --surface:    #16203A;
+  --surface-2:  #1E2B49;
+  --border:     #2C3C60;
+  --text:       #E6EDF7;
+  --text-muted: #93A3BE;
+
+  --primary:      #6ECBF5;
+  --primary-dark: #2A85C4;
+  --primary-fg:   #FFFFFF;
+  --secondary:    #FF9CBC;
+  --secondary-fg: #4B1528;
+  --accent:       #C9B6FF;
+  --accent-fg:    #EEEAFE;
+  --marquee:      #FFC56E;
+
+  --success: #4CD08A;
+  --warning: #FFC56E;
+  --error:   #FB6F73;
+  --online:  #4CD08A;
+
+  --glow: 0 0 24px rgba(110, 203, 245, 0.35);
+}
+
+/* ── Base ───────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  font-family: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Títulos con la display cute-cinematográfica */
+h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0.01em; }
+.font-cursive { font-family: 'Pacifico', cursive; }
+
+/* ── Scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: color-mix(in srgb, var(--primary) 55%, transparent); border-radius: 100px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary); background-clip: padding-box; }
+
+/* ── Selection ──────────────────────────────────────────── */
+::selection { background: rgba(110, 203, 245, 0.3); }
+
+/* ── Animaciones ────────────────────────────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-10px); }
+}
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50%       { transform: translateY(-15px) rotate(2deg); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-ring {
+  0%   { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.animate-float        { animation: float 3s ease-in-out infinite; }
+.animate-float-slow   { animation: float-slow 4s ease-in-out infinite; }
+.animate-slide-up     { animation: slide-up 0.4s ease-out both; }
+.animate-slide-right  { animation: slide-in-right 0.3s ease-out both; }
+.animate-scale-in     { animation: scale-in 0.25s cubic-bezier(0.34,1.56,0.64,1) both; }
+.animate-fade-in      { animation: fade-in 0.3s ease-out both; }
+.animate-msg-in       { animation: msg-in 0.28s cubic-bezier(0.22,1,0.36,1) both; }
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.4) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+/* Respetar a quien prefiere menos movimiento (OS) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
+/* Override manual desde Configuración → Accesibilidad (clase en <html>) */
+.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ── Utilidades globales ────────────────────────────────── */
+.glass {
+  background: rgba(255,255,255,0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.2);
+}
+.dark .glass {
+  background: rgba(22,32,58,0.7);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.glow-primary { box-shadow: var(--glow); }
+
+/* Indicador online */
+.online-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--online);
+  border-radius: 50%;
+  position: relative;
+}
+.online-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--online);
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* ============================================================
+   Apoyo voluntario — glows, brillos, confeti, recompensas, temas
+   (Todo decorativo. Se desactiva con reduce-motion / prefers-reduced-motion.)
+   ============================================================ */
+
+/* CTA principal: glow suave permanente (no agresivo) */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 6px 22px rgba(110,203,245,0.45); }
+  50%       { box-shadow: 0 10px 34px rgba(110,203,245,0.7); }
+}
+.cta-glow { animation: glow-pulse 2.8s ease-in-out infinite; }
+
+/* Brillo que cruza al hacer hover (sheen) */
+.sheen-host { position: relative; overflow: hidden; }
+.sheen-host::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+  transform: translateX(-160%) skewX(-18deg); pointer-events: none;
+}
+@keyframes sheen { to { transform: translateX(320%) skewX(-18deg); } }
+.sheen-host:hover::after { animation: sheen 0.85s ease; }
+
+/* Glows por tier (identidad distinta, intensidad equivalente) */
+.tier-glow-amigo        { box-shadow: 0 6px 22px rgba(244,114,182,0.5); }
+.tier-glow-colaborador  { box-shadow: 0 6px 22px rgba(110,203,245,0.55); }
+.tier-glow-patrocinador { box-shadow: 0 6px 22px rgba(192,132,252,0.55); }
+
+/* Pochi celebra (pantalla de gracias) */
+@keyframes pochi-cheer {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  25%       { transform: translateY(-12px) rotate(3deg); }
+  50%       { transform: translateY(0) rotate(-2deg); }
+  75%       { transform: translateY(-7px) rotate(2deg); }
+}
+.animate-pochi-cheer { animation: pochi-cheer 1.2s ease-in-out infinite; }
+
+/* Confeti ligero */
+@keyframes confetti-fall {
+  0%   { transform: translateY(-12%) rotate(0deg);   opacity: 1; }
+  100% { transform: translateY(110vh) rotate(560deg); opacity: 0; }
+}
+.confetti-piece { position: absolute; top: -12px; width: 8px; height: 12px; border-radius: 2px; animation: confetti-fall linear forwards; }
+
+/* Marco premium animado (avatar/insignia patrocinador) */
+@keyframes frame-rotate { to { transform: rotate(360deg); } }
+.frame-premium { position: relative; }
+.frame-premium::before {
+  content: ''; position: absolute; inset: -3px; border-radius: 9999px; z-index: 0;
+  background: conic-gradient(from 0deg, #f59e0b, #d946ef, #7c3aed, #22d3ee, #f59e0b);
+  animation: frame-rotate 4s linear infinite;
+}
+.frame-premium > * { position: relative; z-index: 1; }
+
+/* Decoraciones de temas de sala */
+@keyframes twinkle     { 0%, 100% { opacity: .15; } 50% { opacity: 1; } }
+@keyframes popcorn-fall{ 0% { transform: translateY(-10%); opacity: 0; } 12% { opacity: 1; } 100% { transform: translateY(112%); opacity: .85; } }
+@keyframes neon-flicker{ 0%, 100% { opacity: .85; } 45% { opacity: .5; } 50% { opacity: 1; } 55% { opacity: .6; } }
+.theme-twinkle  { animation: twinkle 2.4s ease-in-out infinite; }
+.theme-popcorn  { animation: popcorn-fall linear infinite; }
+.theme-neon     { animation: neon-flicker 3s ease-in-out infinite; }
