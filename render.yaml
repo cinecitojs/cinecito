@@ -57,6 +57,17 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     autoDeploy: true
+    # Headers de seguridad (sin CSP estricta para no romper embeds de video / SPA).
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
     # SPA: toda ruta desconocida sirve index.html (React Router en BrowserRouter).
     routes:
       - type: rewrite

@@ -67,6 +67,10 @@ const schema = z.object({
   // Rate-limit específico de POST /auth/guest (por IP).
   GUEST_RATELIMIT_MAX: z.string().optional(),        // máx. por ventana (default 10)
   GUEST_RATELIMIT_WINDOW: z.string().optional(),     // ventana, ej. '1 minute' (default '1 minute')
+
+  // Rate-limit de credenciales: POST /auth/login y /auth/register (por IP, anti fuerza bruta).
+  AUTH_RATELIMIT_MAX: z.string().optional(),         // máx. por ventana (default 10)
+  AUTH_RATELIMIT_WINDOW: z.string().optional(),      // ventana (default '1 minute')
 });
 
 const parsed = schema.safeParse(process.env);
@@ -87,6 +91,13 @@ export const env = parsed.data;
 // sin error visible. Mejor fallar fuerte y claro al arrancar.
 if (env.NODE_ENV === 'production' && !env.FRONTEND_URL) {
   console.error('❌ FRONTEND_URL es obligatorio en producción (origen del frontend para CORS, ej. https://tu-web.onrender.com).');
+  process.exit(1);
+}
+
+// Un JWT_SECRET corto es forzable por fuerza bruta → tokens falsificables. En
+// producción exigimos ≥ 32 caracteres (en dev/local se permite menos por comodidad).
+if (env.NODE_ENV === 'production' && env.JWT_SECRET.length < 32) {
+  console.error('❌ JWT_SECRET debe tener al menos 32 caracteres en producción. Generá uno con: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
   process.exit(1);
 }
 

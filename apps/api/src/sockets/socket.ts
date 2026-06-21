@@ -14,6 +14,7 @@ import { attachSignaling } from '../webrtc/signaling';
 import { redis } from '../lib/redis';
 import { prisma } from '../lib/db';
 import { isMemberOrOwner } from '../lib/acl';
+import { accountBlockReason } from '../lib/accountStatus';
 import { getRoomSession } from '../services/roomSession';
 import { applyVideoCommand } from '../services/videoSync';
 import {
@@ -103,13 +104,26 @@ export default fp(async function (fastify, _opts) {
       try {
         const user = await prisma.user.findUnique({
           where: { id: userId },
-          select: { username: true, avatar: true },
+          select: { username: true, avatar: true, status: true, statusReason: true, suspendedUntil: true },
         });
-        if (user) {
-          (socket as any).data.username = user.username;
-          (socket as any).data.avatar = user.avatar ?? null;
+        // Enforcement de moderación en tiempo real: si la cuenta fue eliminada o
+        // bloqueada/suspendida DESPUÉS de emitir el token, se corta la sesión acá
+        // (reusa esta misma query → sin costo extra). En error de DB NO desconectamos
+        // (fail-open por disponibilidad). join-room respeta data.blocked.
+        if (!user) {
+          (socket as any).data.blocked = 'Esta cuenta ya no existe.';
+          socket.emit('account_blocked', { reason: (socket as any).data.blocked });
+          return socket.disconnect(true);
         }
-      } catch { /* ignorar */ }
+        const reason = accountBlockReason(user);
+        if (reason) {
+          (socket as any).data.blocked = reason;
+          socket.emit('account_blocked', { reason });
+          return socket.disconnect(true);
+        }
+        (socket as any).data.username = user.username;
+        (socket as any).data.avatar = user.avatar ?? null;
+      } catch { /* DB inaccesible: no desconectar (fail-open) */ }
     })();
     const getUsername = (): string => (socket as any).data.username || 'Invitado';
 
@@ -117,6 +131,11 @@ export default fp(async function (fastify, _opts) {
     socket.on('join-room', async (data, ack) => {
       try {
         await usernameReady; // el nombre puede estar cargándose; no bloquea el registro del listener
+        // Cuenta bloqueada/suspendida/eliminada: no puede entrar a salas.
+        if ((socket as any).data.blocked) {
+          const err = { error: 'account_blocked', message: (socket as any).data.blocked as string };
+          return typeof ack === 'function' ? ack(err) : socket.emit('join-error', err);
+        }
         const { roomId } = (data as any) || {};
         if (!roomId) {
           const err = { error: 'invalid_payload', message: 'roomId required' };

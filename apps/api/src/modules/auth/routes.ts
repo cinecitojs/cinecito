@@ -13,6 +13,7 @@ import { isDbUnreachable, REGISTER_DB_DOWN_MESSAGE, DB_DOWN_MESSAGE } from '../.
 import { LEGAL_VERSIONS } from '../../lib/legal';
 import { deleteRoomSession } from '../../services/roomSession';
 import { deleteRoomInvites } from '../../lib/inviteStore';
+import { accountBlockReason } from '../../lib/accountStatus';
 
 // ── Esquemas ─────────────────────────────────────────────────
 const registerSchema = z.object({
@@ -48,24 +49,16 @@ const deleteAccountSchema = z.object({
 const signToken = (sub: string, extra: object = {}, expiresIn: string = '7d') =>
   jwt.sign({ sub, ...extra }, process.env.JWT_SECRET as string, { expiresIn } as any);
 
-// Devuelve un mensaje de bloqueo si la cuenta NO está activa, o null si puede operar.
-// Una suspensión temporal expirada (suspendedUntil pasado) se considera levantada.
-function checkAccountStatus(user: { status?: string | null; statusReason?: string | null; suspendedUntil?: Date | null }): string | null {
-  const status = user.status ?? 'active';
-  if (status === 'deleted') return 'Esta cuenta fue eliminada.';
-  if (status === 'blocked') return user.statusReason || 'Esta cuenta está bloqueada. Contactá con soporte.';
-  if (status === 'suspended') {
-    if (user.suspendedUntil && user.suspendedUntil.getTime() <= Date.now()) return null; // suspensión vencida
-    const until = user.suspendedUntil ? ` hasta ${user.suspendedUntil.toLocaleString('es-AR')}` : '';
-    return `${user.statusReason || 'Tu cuenta está suspendida'}${until}.`;
-  }
-  return null;
-}
-
 const router: FastifyPluginAsync = async (fastify) => {
 
+  // Rate-limit por IP para credenciales (anti fuerza bruta / creación masiva).
+  const authRateLimit = {
+    max: Number(process.env.AUTH_RATELIMIT_MAX) || 10,
+    timeWindow: process.env.AUTH_RATELIMIT_WINDOW || '1 minute',
+  };
+
   // ── POST /register ───────────────────────────────────────
-  fastify.post('/register', { preHandler: validateBody(registerSchema) }, async (request, reply) => {
+  fastify.post('/register', { config: { rateLimit: authRateLimit }, preHandler: validateBody(registerSchema) }, async (request, reply) => {
     const { email, username, password, acceptedTerms, acceptedPrivacy, marketingOptIn } =
       request.body as z.infer<typeof registerSchema>;
 
@@ -120,7 +113,7 @@ const router: FastifyPluginAsync = async (fastify) => {
   });
 
   // ── POST /login ──────────────────────────────────────────
-  fastify.post('/login', { preHandler: validateBody(loginSchema) }, async (request, reply) => {
+  fastify.post('/login', { config: { rateLimit: authRateLimit }, preHandler: validateBody(loginSchema) }, async (request, reply) => {
     const { email, password } = request.body as z.infer<typeof loginSchema>;
 
     // El identificador puede ser un email o un nombre de usuario.
@@ -138,7 +131,7 @@ const router: FastifyPluginAsync = async (fastify) => {
       }
 
       // Enforcement de moderación: cuentas no activas no pueden iniciar sesión.
-      const blocked = checkAccountStatus(user);
+      const blocked = accountBlockReason(user);
       if (blocked) return reply.status(403).send({ error: blocked });
 
       // Bootstrap de admin: los emails de ADMIN_EMAILS se promueven a ADMIN al entrar.
