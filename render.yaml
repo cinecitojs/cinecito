@@ -19,8 +19,10 @@ services:
     rootDir: apps/api
     plan: free                  # ⚠️ free duerme tras inactividad (cold start ~30s).
                                 # Para watch-parties siempre activas: subir a "starter".
-    buildCommand: npm install && npm run prisma:generate && npm run build
-    startCommand: npm run start # node dist/src/index.js
+    # --include=dev es OBLIGATORIO: NODE_ENV=production hace que npm omita las
+    # devDependencies, pero el build necesita typescript (tsc) y prisma (CLI).
+    buildCommand: npm install --include=dev && npm run prisma:generate && npm run build
+    startCommand: npm run start # node dist/src/index.js (runtime solo usa dependencies)
     healthCheckPath: /health
     autoDeploy: true
     envVars:
