@@ -1,0 +1,67 @@
+# ============================================================
+# Render Blueprint — Cinecito
+# Despliega DOS servicios desde este repo:
+#   1) cinecito-api  → Web Service (Node + Socket.IO)
+#   2) cinecito-web  → Static Site (build de Vite)
+#
+# Uso: en Render → New → Blueprint → conectar este repo.
+# Render pedirá los valores marcados `sync: false` (secretos) al aplicar.
+# La base de datos es Supabase (externa): NO se crea Postgres en Render.
+# ============================================================
+
+services:
+  # ── Backend / API ─────────────────────────────────────────
+  - type: web
+    runtime: node
+    name: cinecito-api
+    region: oregon              # cerca de Supabase us-west-2
+    branch: main
+    rootDir: apps/api
+    plan: free                  # ⚠️ free duerme tras inactividad (cold start ~30s).
+                                # Para watch-parties siempre activas: subir a "starter".
+    buildCommand: npm install && npm run prisma:generate && npm run build
+    startCommand: npm run start # node dist/src/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # PORT lo inyecta Render automáticamente (el server lo lee de process.env.PORT).
+      - key: DATABASE_URL
+        sync: false             # Supabase: usar el POOLER de sesión (IPv4) + ?sslmode=require
+      - key: JWT_SECRET
+        generateValue: true     # Render genera un secreto fuerte y estable
+      - key: FRONTEND_URL
+        sync: false             # origen del front para CORS, ej. https://cinecito-web.onrender.com
+      - key: TRUST_PROXY
+        value: "true"           # Render está detrás de proxy → IP real del cliente para el rate-limit
+      - key: ADMIN_EMAILS
+        value: cinecitojs@gmail.com
+      # ── Opcionales: agregar en el panel si se usan ──────────
+      # Apoyo voluntario / pagos:
+      #   KOFI_VERIFICATION_TOKEN   (Ko-fi → More → Webhooks → Verification Token)
+      #   STRIPE_WEBHOOK_SECRET / MP_WEBHOOK_SECRET
+      # Subida de archivos (Cloudflare R2):
+      #   R2_ENDPOINT / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET_NAME / R2_PUBLIC_URL
+      # Tiempo real multi-instancia (solo si numInstances > 1):
+      #   REDIS_URL
+      # Observabilidad:
+      #   SENTRY_DSN / METRICS_BEARER_TOKEN
+
+  # ── Frontend / Web (estático) ─────────────────────────────
+  - type: web
+    runtime: static
+    name: cinecito-web
+    branch: main
+    rootDir: apps/web
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    # SPA: toda ruta desconocida sirve index.html (React Router en BrowserRouter).
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false             # URL pública del API, ej. https://cinecito-api.onrender.com

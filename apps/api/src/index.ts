@@ -53,13 +53,25 @@ async function build() {
   // Register routes
   await registerRoutes(server as any);
 
-  // Health endpoint
+  // Health endpoint — usado por el health check de Render.
+  // Devuelve SIEMPRE 200 (liveness): la DB es la única dependencia dura, pero si
+  // se cae (Supabase externo) reiniciar el proceso no ayuda, así que no forzamos
+  // un no-200 que provocaría bucles de reinicio. El estado real va en el body.
+  // Redis es OPCIONAL (sin él se usa estado en memoria) → nunca marca "degraded".
   server.get('/health', async () => {
     try {
       const { checkHealth } = await import('./lib/health');
       const services = await checkHealth();
-      const ok = services.db && services.redis;
-      return { status: ok ? 'ok' : 'degraded', services, timestamp: new Date().toISOString() };
+      const redisConfigured = !!process.env.REDIS_URL;
+      const ok = services.db; // solo la base de datos es crítica
+      return {
+        status: ok ? 'ok' : 'degraded',
+        services: {
+          db: services.db,
+          redis: redisConfigured ? (services.redis ? 'up' : 'down') : 'disabled',
+        },
+        timestamp: new Date().toISOString(),
+      };
     } catch (err) {
       server.log.error('health check failed', err as any);
       return { status: 'error', error: String(err) };

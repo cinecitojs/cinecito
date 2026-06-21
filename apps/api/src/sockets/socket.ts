@@ -52,9 +52,9 @@ function emitSystem(io: IOServer, roomId: string, content: string) {
 export default fp(async function (fastify, _opts) {
   const io = new IOServer(fastify.server, {
     // En dev reflejamos cualquier origen (acceso multi-dispositivo por LAN).
-    // En producción se restringe a FRONTEND_URL.
+    // En producción se restringe a FRONTEND_URL (obligatorio: ver config/env.ts).
     cors: {
-      origin: process.env.NODE_ENV === 'production' ? (process.env.FRONTEND_URL || '*') : true,
+      origin: process.env.NODE_ENV === 'production' ? (process.env.FRONTEND_URL || false) : true,
     },
   });
 

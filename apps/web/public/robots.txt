@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+# Rutas privadas / con autenticación: sin valor para buscadores
+Disallow: /admin
+Disallow: /room/
+Disallow: /configuracion

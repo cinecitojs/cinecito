@@ -7,6 +7,10 @@ dotenv.config();
 // Todo lo demás es opcional: si falta, la feature asociada se degrada
 // (ej. sin R2 no se pueden subir archivos, pero YouTube/Vimeo/HLS/MP4 siguen funcionando).
 const schema = z.object({
+  // production | development | test. En producción se restringe CORS, se exige
+  // FRONTEND_URL y Prisma usa una única instancia.
+  NODE_ENV: z.enum(['production', 'development', 'test']).optional(),
+
   DATABASE_URL: z.string().min(1, 'DATABASE_URL es obligatorio'),
   JWT_SECRET: z.string().min(8, 'JWT_SECRET debe tener al menos 8 caracteres'),
 
@@ -19,8 +23,35 @@ const schema = z.object({
   R2_BUCKET_NAME: z.string().optional(),
   R2_PUBLIC_URL: z.string().optional(),
 
+  // Origen permitido por CORS en producción (ej. https://cinecito-web.onrender.com).
+  // Obligatorio en producción: si falta, el navegador bloquea TODA la web (ver guard abajo).
   FRONTEND_URL: z.string().optional(),
   PORT: z.string().optional(),
+
+  // ── Panel de administración ───────────────────────────────────
+  // Lista separada por comas: estos correos se auto-promueven a ADMIN al iniciar sesión.
+  ADMIN_EMAILS: z.string().optional(),
+
+  // ── Apoyo voluntario / pagos (todas opcionales; habilitan cada proveedor) ──
+  KOFI_VERIFICATION_TOKEN: z.string().optional(),  // Ko-fi → Webhooks → Verification Token
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  MP_WEBHOOK_SECRET: z.string().optional(),         // Mercado Pago
+  SUPPORT_DEV_GRANT: z.string().optional(),         // 'true' permite conceder tiers sin pago (NO usar en prod)
+  SUPPORT_CHECKOUT_URL: z.string().optional(),
+  SUPPORT_CHECKOUT_URL_AMIGO: z.string().optional(),
+  SUPPORT_CHECKOUT_URL_COLABORADOR: z.string().optional(),
+  SUPPORT_CHECKOUT_URL_PATROCINADOR: z.string().optional(),
+  SUPPORT_RATELIMIT_MAX: z.string().optional(),
+  SUPPORT_RATELIMIT_WINDOW: z.string().optional(),
+
+  // ── Observabilidad (opcional) ─────────────────────────────────
+  SENTRY_DSN: z.string().optional(),
+  METRICS_BEARER_TOKEN: z.string().optional(),      // si se define, /metrics exige este Bearer
+
+  // ── Llamadas de voz (opcional, NAT estricto) ──────────────────
+  TURN_URL: z.string().optional(),
+  TURN_USERNAME: z.string().optional(),
+  TURN_CREDENTIAL: z.string().optional(),
 
   // Confiar en cabeceras de proxy para obtener la IP real del cliente.
   // Necesario para que el rate-limit por IP de /auth/guest funcione en
@@ -49,6 +80,15 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+// ── Guard de producción ───────────────────────────────────────
+// En producción, sin FRONTEND_URL el CORS cae a `false` (src/index.ts) y el
+// navegador bloquea TODAS las llamadas del frontend → la app queda inservible
+// sin error visible. Mejor fallar fuerte y claro al arrancar.
+if (env.NODE_ENV === 'production' && !env.FRONTEND_URL) {
+  console.error('❌ FRONTEND_URL es obligatorio en producción (origen del frontend para CORS, ej. https://tu-web.onrender.com).');
+  process.exit(1);
+}
 
 // Indica si la subida de archivos está disponible (todas las claves R2 presentes)
 export const uploadsEnabled = Boolean(
