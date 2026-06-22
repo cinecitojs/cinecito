@@ -2,10 +2,12 @@
 // Reacciones flotantes EFÍMERAS sobre el video (#8 pulido de sala).
 // - useFloatingReactions(): estado + spawn(), auto-limpieza (no satura memoria/DOM).
 // - ReactionsOverlay: capa de animación (pointer-events-none, no interfiere con el video).
-// - ReactionBar: barra compacta de emojis para enviar (móvil + escritorio).
+// - ReactionBar: barra de emojis COLAPSABLE (por defecto cerrada, para no estorbar;
+//   se abre con el botón de carita y recuerda la preferencia).
 // No toca el motor de sincronización: es una capa visual independiente.
 
 import { useCallback, useRef, useState } from 'react';
+import { Smile, X } from 'lucide-react';
 
 // Whitelist sincronizada con el backend (socket.ts → REACTION_EMOJIS).
 export const REACTION_EMOJIS = ['❤️', '😂', '😮', '👏', '🔥', '😍', '😢', '👍', '🎉', '💯'] as const;
@@ -74,16 +76,31 @@ interface ReactionBarProps {
   className?: string;
   /** Subconjunto compacto para espacios reducidos (móvil/cine). */
   compact?: boolean;
+  /** Si es false, muestra los emojis siempre (sin botón de colapsar). */
+  collapsible?: boolean;
 }
 
-export function ReactionBar({ onPick, className = '', compact = false }: ReactionBarProps) {
+const OPEN_KEY = 'cinecito_reactions_open';
+
+export function ReactionBar({ onPick, className = '', compact = false, collapsible = true }: ReactionBarProps) {
   const list = compact ? ['❤️', '😂', '😮', '🔥', '👏', '👍'] : REACTION_EMOJIS;
-  return (
-    <div
-      className={`flex items-center gap-0.5 rounded-full bg-black/40 backdrop-blur-md px-1.5 py-1 border border-white/10 ${className}`}
-      role="group"
-      aria-label="Enviar reacción"
-    >
+
+  // Colapsada por defecto para no estorbar; recuerda la preferencia del usuario.
+  const [open, setOpen] = useState(() => {
+    if (!collapsible) return true;
+    try { return localStorage.getItem(OPEN_KEY) === '1'; } catch { return false; }
+  });
+  const toggle = useCallback(() => {
+    setOpen((o) => {
+      const next = !o;
+      try { localStorage.setItem(OPEN_KEY, next ? '1' : '0'); } catch { /* */ }
+      return next;
+    });
+  }, []);
+
+  const emojiRow = (
+    <div className="flex items-center gap-0.5 rounded-full bg-black/40 backdrop-blur-md px-1.5 py-1 border border-white/10"
+      role="group" aria-label="Enviar reacción">
       {list.map((emoji) => (
         <button
           key={emoji}
@@ -96,6 +113,25 @@ export function ReactionBar({ onPick, className = '', compact = false }: Reactio
           {emoji}
         </button>
       ))}
+    </div>
+  );
+
+  if (!collapsible) return <div className={className}>{emojiRow}</div>;
+
+  return (
+    <div className={`flex items-center gap-1.5 ${className}`}>
+      {open && <div className="animate-scale-in origin-right">{emojiRow}</div>}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        aria-label={open ? 'Ocultar reacciones' : 'Reaccionar'}
+        title={open ? 'Ocultar reacciones' : 'Reaccionar'}
+        className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-md border border-white/10 transition-colors
+          ${open ? 'bg-primary text-white' : 'bg-black/40 text-white hover:bg-black/60'}`}
+      >
+        {open ? <X className="w-4 h-4" /> : <Smile className="w-5 h-5" />}
+      </button>
     </div>
   );
 }
