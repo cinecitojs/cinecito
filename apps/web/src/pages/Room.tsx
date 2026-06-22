@@ -41,6 +41,12 @@ export default function Room() {
   const [messages, setMessages]       = useState<ChatMessage[]>([]);
   const [session, setSession]         = useState<RoomSession | null>(null);
   const [onlineIds, setOnlineIds]     = useState<string[]>([]);
+  // Capacidad de participantes ACTIVOS (en videollamada). El servidor es la fuente
+  // de verdad y lo difunde a TODA la sala (activos y espectadores). max viene del server.
+  const [voiceRoomState, setVoiceRoomState] = useState<{
+    active: number; max: number; full: boolean; activeUserIds: string[]; waitingUserIds: string[];
+  }>({ active: 0, max: 4, full: false, activeUserIds: [], waitingUserIds: [] });
+  const waitingRef = useRef(false); // espejo de isWaiting para listeners del socket
   const [typingUserIds, setTypingIds] = useState<string[]>([]);
   const [isHost, setIsHost]           = useState(false);
   const [permissions, setPermissions] = useState<RoomPermissions>(DEFAULT_PERMS);
@@ -247,6 +253,11 @@ export default function Room() {
       }),
       socket.on<{ userId: string }>('user-left', ({ userId }) =>
         setOnlineIds((p) => p.filter((id) => id !== userId))),
+      // Capacidad de videollamada (activos/espera) difundida a toda la sala.
+      socket.on<typeof voiceRoomState>('voice-room-state', (st) => setVoiceRoomState(st)),
+      socket.on('voice-slot-free', () => {
+        if (waitingRef.current) toast('¡Se liberó un lugar en la videollamada! Tocá "Unirse" 🎥', 'success');
+      }),
       socket.on<{ typingUserIds: string[] }>('typing-update', ({ typingUserIds }) =>
         setTypingIds(typingUserIds)),
       socket.on<{ permissions: RoomPermissions }>('permissions-updated', ({ permissions }) =>
@@ -420,6 +431,7 @@ export default function Room() {
 
   const participantsProps = {
     room, onlineUserIds: onlineIds, currentUserId: user?.id, isHost,
+    activeUserIds: voiceRoomState.activeUserIds, waitingUserIds: voiceRoomState.waitingUserIds,
     onTransferHost: (uid: string) =>
       roomId && socket.transferHost(roomId, uid)
         .then(() => toast('Control transferido', 'success'))
@@ -428,15 +440,24 @@ export default function Room() {
       setReportTarget({ type: 'user', id: u.id, context: roomId, label: u.username }),
   };
 
+  // Estoy en la lista de espera por un cupo activo. Ref para usarlo dentro de
+  // listeners del socket (que capturarían un valor obsoleto del estado).
+  const isWaiting = !!user?.id && voiceRoomState.waitingUserIds.includes(user.id);
+  useEffect(() => { waitingRef.current = isWaiting; }, [isWaiting]);
+
   const voiceProps = {
     inVoice: inVoiceHere, muted: voice.muted, videoOn: voice.videoOn,
     connecting: voice.connecting, error: voice.error,
     peers: inVoiceHere ? voice.peers : {}, speaking: inVoiceHere ? voice.speaking : {},
     netQuality: voice.netQuality, peerQuality: voice.peerQuality, peerStats: voice.peerStats, saving: voice.saving,
+    activeCount: voiceRoomState.active, maxActive: voiceRoomState.max, roomFull: voiceRoomState.full,
+    isWaiting,
     currentUsername: user?.username || 'Vos', localStream: voice.localStream,
     onJoin: (withVideo?: boolean) => roomId && voice.joinVoice(roomId, withVideo),
     onLeave: voice.leaveVoice,
     onToggleMute: voice.toggleMute, onToggleVideo: voice.toggleVideo,
+    onRequestSlot: () => roomId && voice.requestSlot(roomId),
+    onCancelSlot: () => roomId && voice.cancelSlot(roomId),
   };
 
   const chatPanelProps = {

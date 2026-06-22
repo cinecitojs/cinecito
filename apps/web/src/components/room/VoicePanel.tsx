@@ -62,16 +62,24 @@ interface VoicePanelProps {
   peerQuality?: Record<string, NetQuality>;
   peerStats?: Record<string, PeerStat>;
   saving?: boolean;
+  // Capacidad de activos (videollamada). Fuente: servidor.
+  activeCount?: number;
+  maxActive?: number;
+  roomFull?: boolean;
+  isWaiting?: boolean;
   onJoin: (withVideo?: boolean) => void;
   onLeave: () => void;
   onToggleMute: () => void;
   onToggleVideo: () => void;
+  onRequestSlot?: () => void;
+  onCancelSlot?: () => void;
 }
 
 export default function VoicePanel({
   inVoice, muted, videoOn, connecting, error, peers, speaking,
   currentUsername, localStream, netQuality, peerQuality, peerStats, saving,
-  onJoin, onLeave, onToggleMute, onToggleVideo,
+  activeCount = 0, maxActive = 4, roomFull = false, isWaiting = false,
+  onJoin, onLeave, onToggleMute, onToggleVideo, onRequestSlot, onCancelSlot,
 }: VoicePanelProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const [lobbyOpen, setLobbyOpen]   = useState(false);
@@ -101,46 +109,57 @@ export default function VoicePanel({
         <div className="px-4 py-3 border-b border-[var(--border)] flex items-center gap-2">
           <Volume2 className="w-4 h-4 text-primary" />
           <span className="font-bold text-sm">Voz</span>
-          {peerList.length > 0 && (
-            <span className="ml-auto text-xs text-[var(--text-muted)]">
-              {peerList.length} en llamada
-            </span>
-          )}
+          {/* Contador de activos visible para todos (también espectadores) */}
+          <span className={`ml-auto text-xs font-semibold px-2 py-0.5 rounded-full ${roomFull ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-primary/10 text-primary'}`}>
+            Activos: {activeCount}/{maxActive}
+          </span>
         </div>
         <div className="p-4 flex flex-col items-center gap-3">
-          {/* Avatares de quienes ya están en la llamada */}
-          {peerList.length > 0 && (
-            <div className="flex -space-x-2">
-              {peerList.slice(0, 5).map((p) => (
-                <Avatar key={p.socketId} name={p.username} size="sm"
-                  className="ring-2 ring-surface dark:ring-dark-surface" />
-              ))}
-            </div>
+          {roomFull ? (
+            // ── Sala llena: no hay cupo activo → espectador / espera ──
+            <>
+              <p className="text-xs text-[var(--text-muted)] text-center">
+                La sala alcanzó el máximo de {maxActive} participantes activos. Podés seguir
+                <span className="font-semibold text-[var(--text)]"> viendo y chateando</span> como espectador.
+              </p>
+              {isWaiting ? (
+                <button onClick={onCancelSlot}
+                  className="w-full py-2.5 rounded-2xl border-2 border-amber-500/50 text-amber-600 dark:text-amber-400 font-bold text-sm hover:bg-amber-500/10 transition-all">
+                  En espera ✓ · Cancelar aviso
+                </button>
+              ) : (
+                <button onClick={onRequestSlot}
+                  className="w-full py-2.5 rounded-2xl border-2 border-[var(--border)] hover:border-primary font-bold text-sm transition-all">
+                  Avisarme cuando se libere un lugar
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-[var(--text-muted)] text-center">
+                {activeCount > 0 ? 'Unite a la conversación' : 'Sé el primero en iniciar una llamada'}
+              </p>
+              <div className="flex gap-2 w-full">
+                <button
+                  onClick={() => { setLobbyVideo(false); setLobbyOpen(true); }}
+                  disabled={connecting}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-primary text-white font-bold text-sm hover:bg-primary-dark transition-all disabled:opacity-50"
+                >
+                  {connecting
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <><Phone className="w-4 h-4" /> Unirse</>}
+                </button>
+                <button
+                  onClick={() => { setLobbyVideo(true); setLobbyOpen(true); }}
+                  disabled={connecting}
+                  className="px-3 py-2.5 rounded-2xl border-2 border-[var(--border)] hover:border-primary transition-all disabled:opacity-50"
+                  title="Unirse con cámara"
+                >
+                  <Video className="w-4 h-4" />
+                </button>
+              </div>
+            </>
           )}
-          <p className="text-xs text-[var(--text-muted)] text-center">
-            {peerList.length > 0
-              ? 'Unite a la conversación de voz'
-              : 'Sé el primero en iniciar una llamada'}
-          </p>
-          <div className="flex gap-2 w-full">
-            <button
-              onClick={() => { setLobbyVideo(false); setLobbyOpen(true); }}
-              disabled={connecting}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-primary text-white font-bold text-sm hover:bg-primary-dark transition-all disabled:opacity-50"
-            >
-              {connecting
-                ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <><Phone className="w-4 h-4" /> Unirse</>}
-            </button>
-            <button
-              onClick={() => { setLobbyVideo(true); setLobbyOpen(true); }}
-              disabled={connecting}
-              className="px-3 py-2.5 rounded-2xl border-2 border-[var(--border)] hover:border-primary transition-all disabled:opacity-50"
-              title="Unirse con cámara"
-            >
-              <Video className="w-4 h-4" />
-            </button>
-          </div>
           {error && <p className="text-xs text-red-500 text-center">{error}</p>}
         </div>
       </div>

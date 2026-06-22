@@ -23,6 +23,7 @@ function sourceIcon(source: string) {
 // ── PARTICIPANTS PANEL ───────────────────────────────────────
 export function ParticipantsPanel({
   room, onlineUserIds, currentUserId, isHost, onTransferHost, onReportUser,
+  activeUserIds = [], waitingUserIds = [],
 }: {
   room: any;
   onlineUserIds: string[];
@@ -30,6 +31,8 @@ export function ParticipantsPanel({
   isHost: boolean;
   onTransferHost: (uid: string) => void;
   onReportUser?: (user: { id: string; username: string }) => void;
+  activeUserIds?: string[];   // en videollamada (cupo activo)
+  waitingUserIds?: string[];  // esperando un cupo
 }) {
   const onlineCount = onlineUserIds.length;
 
@@ -61,6 +64,8 @@ export function ParticipantsPanel({
         {members.map((m) => {
           const online = m.id ? onlineUserIds.includes(m.id) : false;
           const isMe   = m.id === currentUserId;
+          const isActive  = m.id ? activeUserIds.includes(m.id) : false;
+          const isWaiting = m.id ? waitingUserIds.includes(m.id) : false;
           return (
             <div key={m.id}
               className={`flex items-center gap-2.5 p-2 rounded-2xl transition-colors group
@@ -69,6 +74,12 @@ export function ParticipantsPanel({
               <span className="text-sm font-medium flex-1 truncate">
                 {m.username}{isMe && <span className="text-primary text-xs ml-1">(tú)</span>}
               </span>
+              {isActive && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-online/15 text-online shrink-0" title="En la videollamada">Activo</span>
+              )}
+              {!isActive && isWaiting && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0" title="Esperando un cupo">Espera</span>
+              )}
               {m.isCurrentHost && <Crown className="w-3.5 h-3.5 text-yellow-400 shrink-0" aria-label="Host" />}
               {isHost && !isMe && m.id && !m.isCurrentHost && (
                 <button onClick={() => onTransferHost(m.id)}

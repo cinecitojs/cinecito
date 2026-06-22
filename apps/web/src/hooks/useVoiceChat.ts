@@ -362,6 +362,14 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
     }
   }, [videoOn, socket, tunePeer]);
 
+  // ── Lista de espera por un cupo activo (sala llena) ───────
+  const requestSlot = useCallback((roomId: string) => {
+    socket.current?.emit('voice-wait', { roomId });
+  }, [socket]);
+  const cancelSlot = useCallback((roomId: string) => {
+    socket.current?.emit('voice-unwait', { roomId });
+  }, [socket]);
+
   // ── Adaptación dinámica: monitor de red cada 3s mientras hay llamada ───────────
   useEffect(() => {
     if (!inVoice) return;
@@ -500,6 +508,8 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
     leaveVoice,
     toggleMute,
     toggleVideo,
+    requestSlot,
+    cancelSlot,
     localStream: localStreamRef,
   };
 }
