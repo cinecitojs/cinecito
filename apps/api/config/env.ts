@@ -85,6 +85,16 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 
+// Orígenes permitidos por CORS. En producción acepta FRONTEND_URL como LISTA separada
+// por comas → permite migrar a un dominio propio sin downtime (ej.
+// "https://cinecito-web.onrender.com,https://cinecito.app"). En dev refleja cualquier
+// origen (acceso multi-dispositivo por LAN).
+export function corsOrigins(): boolean | string[] {
+  if (env.NODE_ENV !== 'production') return true;
+  const list = (env.FRONTEND_URL || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return list.length ? list : false;
+}
+
 // ── Guard de producción ───────────────────────────────────────
 // En producción, sin FRONTEND_URL el CORS cae a `false` (src/index.ts) y el
 // navegador bloquea TODAS las llamadas del frontend → la app queda inservible

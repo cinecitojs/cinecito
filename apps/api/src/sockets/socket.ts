@@ -13,6 +13,7 @@ import { createRedisAdapter } from './adapter';
 import { attachSignaling } from '../webrtc/signaling';
 import { redis } from '../lib/redis';
 import { prisma } from '../lib/db';
+import { corsOrigins } from '../../config/env';
 import { isMemberOrOwner } from '../lib/acl';
 import { accountBlockReason } from '../lib/accountStatus';
 import { getRoomSession } from '../services/roomSession';
@@ -52,10 +53,9 @@ function emitSystem(io: IOServer, roomId: string, content: string) {
 
 export default fp(async function (fastify, _opts) {
   const io = new IOServer(fastify.server, {
-    // En dev reflejamos cualquier origen (acceso multi-dispositivo por LAN).
-    // En producción se restringe a FRONTEND_URL (obligatorio: ver config/env.ts).
+    // Dev: refleja cualquier origen (LAN). Prod: lista de FRONTEND_URL (coma-separable).
     cors: {
-      origin: process.env.NODE_ENV === 'production' ? (process.env.FRONTEND_URL || false) : true,
+      origin: corsOrigins(),
     },
   });
 

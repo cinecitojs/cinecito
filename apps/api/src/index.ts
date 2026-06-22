@@ -5,14 +5,10 @@ import { logger } from './lib/logger';
 import { registerRoutes } from './app/routes';
 import { isDbUnreachable, DB_DOWN_MESSAGE, GENERIC_ERROR_MESSAGE } from './lib/errors';
 
-// En desarrollo permitimos cualquier origen (acceso multi-dispositivo por LAN:
-// el celular/tablet abren la web desde la IP local, no desde localhost).
-// En producción se restringe a FRONTEND_URL.
-const corsOrigin =
-  process.env.NODE_ENV === 'production' ? (process.env.FRONTEND_URL || false) : true;
-
-// validate env (throws if missing)
-import '../config/env';
+// Valida el entorno (corta el arranque si falta algo) y expone corsOrigins().
+// Dev: refleja cualquier origen (LAN). Prod: lista de FRONTEND_URL (coma-separable
+// → permite migrar a dominio propio sin downtime).
+import { corsOrigins } from '../config/env';
 
 // Detrás de un proxy (nginx, Cloudflare, Render…) hay que habilitar
 // TRUST_PROXY para que request.ip sea la IP real del cliente — de lo
@@ -33,7 +29,7 @@ const server = Fastify({ logger: logger as any, trustProxy: parseTrustProxy(proc
 
 async function build() {
   await server.register(sensible);
-  await server.register(cors, { origin: corsOrigin });
+  await server.register(cors, { origin: corsOrigins() });
 
   // register plugins
   // observability: metrics + Sentry - register early
