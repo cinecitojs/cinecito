@@ -96,10 +96,11 @@ export default function Room() {
 
   const parsed = addUrl.trim() ? parseVideoUrl(addUrl) : null;
 
-  const { data: room, refetch } = useQuery({
+  const { data: room, refetch, isError, isFetching } = useQuery({
     queryKey: ['room', roomId],
     queryFn:  () => roomsApi.getById(roomId!).then((r) => r.data),
     enabled:  !!roomId,
+    retry: 2, // reintentos extra para sobrevivir al arranque en frío del backend
   });
 
   const socket = useSocket({
@@ -406,6 +407,25 @@ export default function Room() {
   }
 
   if (!room) {
+    // Error de carga (red caída, timeout por arranque en frío, etc.): NO dejamos
+    // un spinner infinito → mostramos un mensaje claro con reintento.
+    if (isError && !isFetching) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
+          <img src="/pochi-sleep.png?v=20260622" alt="" className="w-32 h-auto select-none" draggable={false} />
+          <div>
+            <p className="font-display font-bold text-lg">No pudimos cargar la sala</p>
+            <p className="text-sm text-[var(--text-muted)] mt-1 max-w-xs">
+              La conexión tardó demasiado o se interrumpió. Suele pasar la primera vez si el servidor estaba en reposo.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => refetch()}>Reintentar</Button>
+            <Button variant="secondary" onClick={() => navigate('/home')}>Volver al inicio</Button>
+          </div>
+        </div>
+      );
+    }
     return <div className="min-h-screen flex items-center justify-center"><Spinner size="lg" /></div>;
   }
 

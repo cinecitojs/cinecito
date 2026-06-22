@@ -8,7 +8,10 @@ const BASE = SERVER_URL;
 
 const api = axios.create({
   baseURL: BASE,
-  timeout: 15000,
+  // 30s: tolera el "arranque en frío" del backend (en planes que duermen el
+  // servicio, la primera request tras inactividad puede tardar ~30-50s en
+  // despertar). Con 15s se cortaba y dejaba la sala cargando para siempre.
+  timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 });
 
