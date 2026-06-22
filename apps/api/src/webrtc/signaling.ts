@@ -68,12 +68,14 @@ export function attachSignaling(io: IOServer) {
             if (u?.username) username = u.username;
           } catch { /* ignorar */ }
         }
+        // Estado inicial declarado por el cliente: si entra CON cámara, los demás
+        // deben verla encendida desde el arranque (no solo tras un toggle posterior).
         const participant: VoiceParticipant = {
           socketId: socket.id,
           userId,
           username,
-          muted: false,
-          videoEnabled: false,
+          muted: !!(data as any)?.muted,
+          videoEnabled: !!(data as any)?.videoEnabled,
         };
         room.set(socket.id, participant);
 

@@ -188,8 +188,9 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
       attachAnalyser('local', stream); // detección de habla propia (#7)
       setVideoOn(withVideo);
 
-      // Avisar al servidor que entramos a voz
-      socket.current?.emit('voice-join', { roomId }, (res: any) => {
+      // Avisar al servidor que entramos a voz, declarando el estado inicial de cámara
+      // para que los demás nos vean con la cámara encendida desde el arranque.
+      socket.current?.emit('voice-join', { roomId, videoEnabled: withVideo, muted: false }, (res: any) => {
         if (res?.error) {
           setError(res.message || 'No se pudo unir a la llamada');
           stream.getTracks().forEach((t) => t.stop());
@@ -283,15 +284,22 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
       setVideoOn(newState);
       socket.current?.emit('voice-video-toggle', { roomId: roomIdRef.current, videoEnabled: newState });
     } else {
-      // No hay pista de video: pedirla y agregarla a todas las conexiones
+      // No hay pista de video: pedirla, agregarla a todas las conexiones y RENEGOCIAR.
+      // Sin la renegociación (nueva oferta), el peer nunca recibe la pista nueva → la
+      // cámara aparece "apagada" del otro lado aunque la tengamos encendida.
       try {
         const { camDeviceId } = getSettings();
         const videoStream = await navigator.mediaDevices.getUserMedia({ video: camDeviceId ? { deviceId: { ideal: camDeviceId } } : true });
         const newTrack = videoStream.getVideoTracks()[0];
         stream.addTrack(newTrack);
-        Object.values(peerConnsRef.current).forEach((pc) => {
+        for (const [targetId, pc] of Object.entries(peerConnsRef.current)) {
           pc.addTrack(newTrack, stream);
-        });
+          try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            socket.current?.emit('webrtc-offer', { targetId, offer, roomId: roomIdRef.current });
+          } catch { /* la renegociación de este peer falló; los demás siguen */ }
+        }
         setVideoOn(true);
         socket.current?.emit('voice-video-toggle', { roomId: roomIdRef.current, videoEnabled: true });
       } catch {
@@ -315,9 +323,11 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
       closePeer(socketId);
     };
 
-    // Recibimos una oferta → crear respuesta
+    // Recibimos una oferta → crear respuesta.
+    // REUTILIZAR la conexión existente si ya hay una (renegociación): crear una nueva
+    // PC en cada oferta rompería la conexión y perdería las pistas ya negociadas.
     const onOffer = async ({ from, offer }: any) => {
-      const pc = createPeerConnection(from, false);
+      const pc = peerConnsRef.current[from] ?? createPeerConnection(from, false);
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
