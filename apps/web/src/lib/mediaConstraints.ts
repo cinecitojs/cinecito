@@ -28,17 +28,5 @@ export function videoConstraints(): MediaTrackConstraints {
   };
 }
 
-// Topa el bitrate de SUBIDA del video de cada conexión: evita que un peer acapare
-// el ancho de banda y entrecorte a todos. Best-effort (algunos navegadores no lo
-// soportan → se ignora sin romper la llamada).
-export async function capSenderBitrate(pc: RTCPeerConnection, maxKbps = 600): Promise<void> {
-  try {
-    const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
-    if (!sender) return;
-    const params = sender.getParameters();
-    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-    params.encodings[0].maxBitrate = maxKbps * 1000;
-    (params.encodings[0] as any).maxFramerate = 30;
-    await sender.setParameters(params);
-  } catch { /* no soportado: la llamada sigue igual */ }
-}
+// El control de bitrate/escalado/prioridad vive en lib/callQuality.ts (motor de
+// adaptación dinámica). Acá solo quedan las constraints de captura.

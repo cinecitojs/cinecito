@@ -60,6 +60,9 @@ export default function CallWidget() {
       }
     >
       <div className="p-2.5 w-full">
+        {call.saving && (
+          <p className="text-[10px] text-amber-500 text-center mb-1.5">Video reducido · audio estable</p>
+        )}
         <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto">
           <Tile name={user?.username || 'Vos'} stream={call.localStream.current}
             videoOn={call.videoOn} muted={call.muted} speaking={call.speaking['local']} />

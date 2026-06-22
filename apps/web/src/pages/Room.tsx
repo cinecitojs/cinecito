@@ -432,6 +432,7 @@ export default function Room() {
     inVoice: inVoiceHere, muted: voice.muted, videoOn: voice.videoOn,
     connecting: voice.connecting, error: voice.error,
     peers: inVoiceHere ? voice.peers : {}, speaking: inVoiceHere ? voice.speaking : {},
+    netQuality: voice.netQuality, peerQuality: voice.peerQuality, saving: voice.saving,
     currentUsername: user?.username || 'Vos', localStream: voice.localStream,
     onJoin: (withVideo?: boolean) => roomId && voice.joinVoice(roomId, withVideo),
     onLeave: voice.leaveVoice,
