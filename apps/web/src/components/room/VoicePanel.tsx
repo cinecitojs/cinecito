@@ -10,6 +10,7 @@ import CallLobby from './CallLobby';
 import type { VoicePeer, PeerStat } from '../../hooks/useVoiceChat';
 import type { NetQuality } from '../../lib/callQuality';
 import { usePageVisible } from '../../hooks/usePageVisible';
+import { CAPACITY_SUFFIX, CAPACITY_NOTE, capacityFullText } from '../../lib/roomCapacity';
 
 // Punto de calidad de red: verde (bien) · ámbar (media/reconectando) · rojo (mala).
 const QUALITY_UI: Record<NetQuality, { color: string; label: string; pulse?: boolean }> = {
@@ -110,8 +111,9 @@ export default function VoicePanel({
           <Volume2 className="w-4 h-4 text-primary" />
           <span className="font-bold text-sm">Voz</span>
           {/* Contador de activos visible para todos (también espectadores) */}
-          <span className={`ml-auto text-xs font-semibold px-2 py-0.5 rounded-full ${roomFull ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-primary/10 text-primary'}`}>
-            Activos: {activeCount}/{maxActive}
+          <span title={capacityFullText(maxActive)}
+            className={`ml-auto text-xs font-semibold px-2 py-0.5 rounded-full ${roomFull ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-primary/10 text-primary'}`}>
+            Activos: {activeCount}/{maxActive} · {CAPACITY_SUFFIX}
           </span>
         </div>
         <div className="p-4 flex flex-col items-center gap-3">
@@ -119,7 +121,7 @@ export default function VoicePanel({
             // ── Sala llena: no hay cupo activo → espectador / espera ──
             <>
               <p className="text-xs text-[var(--text-muted)] text-center">
-                La sala alcanzó el máximo de {maxActive} participantes activos. Podés seguir
+                {capacityFullText(maxActive)} Por ahora podés seguir
                 <span className="font-semibold text-[var(--text)]"> viendo y chateando</span> como espectador.
               </p>
               {isWaiting ? (
@@ -158,6 +160,7 @@ export default function VoicePanel({
                   <Video className="w-4 h-4" />
                 </button>
               </div>
+              <p className="text-[10px] text-[var(--text-muted)] text-center">{CAPACITY_NOTE}</p>
             </>
           )}
           {error && <p className="text-xs text-red-500 text-center">{error}</p>}

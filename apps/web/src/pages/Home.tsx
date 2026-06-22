@@ -232,7 +232,7 @@ export default function Home() {
             <Spinner />
           ) : rooms.length === 0 ? (
             <div className="text-center py-12 flex flex-col items-center gap-3">
-              <img src="/pochi-sleep.png" alt="Pochi dormido esperando" className="w-48 h-auto select-none" draggable={false} />
+              <img src="/pochi-sleep.png?v=20260622" alt="Pochi dormido esperando" className="w-48 h-auto select-none" draggable={false} />
               <p className="font-bold">Pochi está esperando la función</p>
               <p className="text-sm text-[var(--text-muted)]">Creá tu primera sala o unite con un código.</p>
               <Button onClick={() => setShowCreate(true)} className="mt-2">
@@ -304,7 +304,7 @@ export default function Home() {
         {/* ── Apoyo voluntario (sutil, no intrusivo) ── */}
         <section className="animate-slide-up" style={{ animationDelay: '0.12s' }}>
           <div className="rounded-3xl border border-[var(--border)] bg-gradient-to-r from-primary/8 via-surface to-secondary/8 dark:from-primary/10 dark:via-dark-surface dark:to-secondary/10 p-5 flex items-center gap-4">
-            <img src="/pochi-wink.png" alt="" className="w-14 h-auto select-none shrink-0 hidden sm:block" draggable={false} />
+            <img src="/pochi-wink.png?v=20260622" alt="" className="w-14 h-auto select-none shrink-0 hidden sm:block" draggable={false} />
             <div className="flex-1 min-w-0">
               <p className="font-bold">¿Te gusta Cinecito?</p>
               <p className="text-sm text-[var(--text-muted)]">Es gratis y lo seguirá siendo. Si querés, un aporte voluntario ayuda a mantenerlo. 🐾</p>
@@ -324,7 +324,7 @@ export default function Home() {
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Nueva sala">
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="flex justify-center mb-2">
-            <img src="/pochi-wink.png" alt="" className="w-36 h-auto select-none" draggable={false} />
+            <img src="/pochi-wink.png?v=20260622" alt="" className="w-36 h-auto select-none" draggable={false} />
           </div>
 
           <Input

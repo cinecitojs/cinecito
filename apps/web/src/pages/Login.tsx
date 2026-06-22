@@ -55,7 +55,7 @@ export default function Login() {
           <div className="absolute top-1/4 left-1/4 w-72 h-72 rounded-full bg-primary/10 blur-3xl" />
           <div className="absolute bottom-1/4 right-1/4 w-56 h-56 rounded-full bg-secondary/10 blur-3xl" />
         </div>
-        <img src="/pochi.png" alt="Pochi, la mascota de Cinecito"
+        <img src="/pochi.png?v=20260622" alt="Pochi, la mascota de Cinecito"
           className="relative w-64 h-auto mb-6 drop-shadow-2xl animate-float select-none" draggable={false} />
         <Link to="/" className="relative font-cursive text-4xl text-primary mb-3">Cinecito</Link>
         <p className="relative text-[var(--text-muted)] text-center max-w-xs leading-relaxed mb-8">
@@ -80,7 +80,7 @@ export default function Login() {
         <div className="w-full max-w-sm animate-scale-in">
           {/* Logo mobile */}
           <div className="lg:hidden text-center mb-8">
-            <img src="/pochi.png" alt="" className="w-28 h-auto mx-auto mb-2 select-none" draggable={false} />
+            <img src="/pochi.png?v=20260622" alt="" className="w-28 h-auto mx-auto mb-2 select-none" draggable={false} />
             <Link to="/" className="font-cursive text-3xl text-primary">Cinecito</Link>
           </div>
 

@@ -59,9 +59,9 @@ const CONSENT_LABELS: Record<string, string> = {
 };
 
 const AVATAR_PRESETS = [
-  { src: '/pochi.png',       label: 'Pochi' },
-  { src: '/pochi-wink.png',  label: 'Pochi guiño' },
-  { src: '/pochi-sleep.png', label: 'Pochi dormido' },
+  { src: '/pochi.png?v=20260622',       label: 'Pochi' },
+  { src: '/pochi-wink.png?v=20260622',  label: 'Pochi guiño' },
+  { src: '/pochi-sleep.png?v=20260622', label: 'Pochi dormido' },
 ];
 
 interface Room {

@@ -106,7 +106,7 @@ export default function Landing() {
             <div className="relative flex items-center justify-center py-6 animate-scale-in" style={{ animationDelay: '0.15s' }}>
               <div className="absolute w-72 h-72 rounded-full bg-primary/10 blur-2xl" aria-hidden="true" />
               <img
-                src="/pochi.png"
+                src="/pochi.png?v=20260622"
                 alt="Pochi, la mascota de Cinecito, saludando"
                 className="relative w-56 sm:w-64 lg:w-72 h-auto drop-shadow-xl animate-float select-none"
                 draggable={false}
@@ -186,7 +186,7 @@ export default function Landing() {
                           shadow-cine-sm p-6 sm:p-10 flex flex-col sm:flex-row items-center gap-6 sm:gap-10">
             <div className="absolute -left-10 -bottom-10 w-56 h-56 rounded-full bg-secondary/10 blur-2xl pointer-events-none" aria-hidden="true" />
             <img
-              src="/pochi-wink.png"
+              src="/pochi-wink.png?v=20260622"
               alt="Pochi guiñando un ojo"
               className="relative w-40 sm:w-48 h-auto drop-shadow-xl shrink-0 animate-float select-none"
               draggable={false}

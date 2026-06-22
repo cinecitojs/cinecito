@@ -120,7 +120,7 @@ export default function Register() {
         </div>
 
         <div className="relative flex items-center gap-4 mb-7">
-          <img src="/pochi-wink.png" alt="Pochi guiñando un ojo"
+          <img src="/pochi-wink.png?v=20260622" alt="Pochi guiñando un ojo"
             className="w-24 h-auto drop-shadow-2xl animate-float select-none" draggable={false} />
           <div>
             <Link to="/" className="font-cursive text-3xl text-primary">Cinecito</Link>
@@ -145,7 +145,7 @@ export default function Register() {
         <div className="w-full max-w-sm animate-scale-in">
           {/* Logo mobile */}
           <div className="lg:hidden text-center mb-6">
-            <img src="/pochi-wink.png" alt="" className="w-24 h-auto mx-auto mb-2 select-none" draggable={false} />
+            <img src="/pochi-wink.png?v=20260622" alt="" className="w-24 h-auto mx-auto mb-2 select-none" draggable={false} />
             <Link to="/" className="font-cursive text-3xl text-primary">Cinecito</Link>
           </div>
 

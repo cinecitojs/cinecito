@@ -29,7 +29,7 @@ export default function JoinRoom() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm animate-scale-in">
         <div className="text-center mb-8">
-          <img src="/pochi.png" alt="" className="w-32 h-auto mx-auto mb-3" />
+          <img src="/pochi.png?v=20260622" alt="" className="w-32 h-auto mx-auto mb-3" />
           <h1 className="font-cursive text-3xl text-primary mb-1">Unirse a sala</h1>
           <p className="text-[var(--text-muted)] text-sm">Ingresá el código de 6 caracteres</p>
         </div>

@@ -47,7 +47,7 @@ export default function Support() {
           <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-72 rounded-full bg-primary/10 blur-3xl" />
           </div>
-          <img src="/pochi-wink.png" alt="Pochi, la mascota de Cinecito"
+          <img src="/pochi-wink.png?v=20260622" alt="Pochi, la mascota de Cinecito"
             className="w-24 h-auto mx-auto mb-4 drop-shadow-2xl animate-float select-none motion-reduce:animate-none" draggable={false} />
           <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary mb-3">
             <HandHeart className="w-4 h-4" /> Apoyo voluntario

@@ -65,7 +65,7 @@ export default function Explore() {
           <Spinner />
         ) : rooms.length === 0 ? (
           <div className="text-center py-16 flex flex-col items-center gap-3">
-            <img src="/pochi-sleep.png" alt="" className="w-52 h-auto" />
+            <img src="/pochi-sleep.png?v=20260622" alt="" className="w-52 h-auto" />
             <p className="text-[var(--text)] font-bold">
               {debounced ? 'No se encontraron salas' : 'No hay salas públicas ahora'}
             </p>

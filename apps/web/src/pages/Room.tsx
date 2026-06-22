@@ -21,6 +21,7 @@ import VoicePanel from '../components/room/VoicePanel';
 import InviteModal from '../components/room/InviteModal';
 import FloatingWidget from '../components/FloatingWidget';
 import { useCall } from '../providers/CallProvider';
+import { capacityChip, capacityFullText } from '../lib/roomCapacity';
 import { getSettings } from '../store/useSettings';
 import { RequestAccessScreen, JoinRequestsPanel, type AccessState, type JoinRequest } from '../components/room/JoinRequests';
 import ReportModal, { type ReportTarget } from '../components/ReportModal';
@@ -230,7 +231,7 @@ export default function Room() {
             && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           try {
             new Notification(`${msg.user?.username || 'Mensaje'} · ${room?.name || 'Cinecito'}`, {
-              body: msg.content?.slice(0, 120), icon: '/pochi.png', tag: `room-${roomId}`,
+              body: msg.content?.slice(0, 120), icon: '/pochi.png?v=20260622', tag: `room-${roomId}`,
             });
           } catch { /* */ }
         }
@@ -488,6 +489,11 @@ export default function Room() {
         <div className="flex-1 min-w-0 flex items-center gap-3">
           <h1 className="font-bold text-sm leading-tight truncate hidden sm:block">{room.name}</h1>
           <InviteBanner code={room.code} roomName={room.name} />
+          {/* Aviso permanente de capacidad (texto completo en el tooltip). No invasivo. */}
+          <span title={capacityFullText(voiceRoomState.max)}
+            className="hidden md:inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--text-muted)] bg-[var(--surface-2)] dark:bg-dark-surface2 px-2 py-1 rounded-full whitespace-nowrap shrink-0">
+            <Users className="w-3 h-3" /> {capacityChip(voiceRoomState.max)}
+          </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button onClick={() => setInviteOpen(true)}

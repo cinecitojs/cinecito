@@ -266,7 +266,7 @@ export default function VideoStage({
   if (!video) {
     return (
       <div className="aspect-video bg-[#0d1520] rounded-3xl flex flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
-        <img src="/pochi-sleep.png" alt="" aria-hidden="true" className="w-48 h-auto opacity-90" />
+        <img src="/pochi-sleep.png?v=20260622" alt="" aria-hidden="true" className="w-48 h-auto opacity-90" />
         <p className="text-sm font-medium">Sin video seleccionado</p>
         {isController && <p className="text-xs opacity-60">Agregá uno en la cola de videos</p>}
       </div>

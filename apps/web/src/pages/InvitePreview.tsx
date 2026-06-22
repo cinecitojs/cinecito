@@ -65,7 +65,7 @@ export default function InvitePreview() {
     <div className="min-h-screen flex items-center justify-center px-4 bg-[var(--bg)] dark:bg-dark-bg">
       <ToastContainer />
       <div className="w-full max-w-sm bg-surface dark:bg-dark-surface rounded-3xl border border-[var(--border)] shadow-cine p-6 text-center animate-scale-in">
-        <img src="/pochi.png" alt="" className="w-28 h-auto mx-auto mb-2" />
+        <img src="/pochi.png?v=20260622" alt="" className="w-28 h-auto mx-auto mb-2" />
 
         {invalid ? (
           <>

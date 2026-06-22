@@ -54,7 +54,7 @@ export default function GuestJoin() {
 
       <div className="w-full max-w-sm animate-scale-in">
         <div className="text-center mb-8">
-          <img src="/pochi.png" alt="" className="w-32 h-auto mx-auto mb-2" />
+          <img src="/pochi.png?v=20260622" alt="" className="w-32 h-auto mx-auto mb-2" />
           <h1 className="font-cursive text-3xl text-primary mb-1">Entrar como invitado</h1>
           <p className="text-[var(--text-muted)] text-sm">Sin cuenta, sin registro. Solo tu nombre.</p>
         </div>
