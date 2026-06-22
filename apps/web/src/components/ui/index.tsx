@@ -2,6 +2,7 @@
 // Primitivos de UI reutilizables con identidad Cinecito
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2 } from 'lucide-react';
 
 // ── Button ───────────────────────────────────────────────────
@@ -102,20 +103,23 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg';
 }
 export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
   const widths = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' };
-  return (
+  // Portal a document.body: así el overlay `fixed` SIEMPRE es relativo al viewport
+  // y no queda atrapado por un ancestro con transform (p.ej. el FloatingWidget en
+  // modo cine, que encajonaba el modal en una franja angosta).
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.5)' }}
       onClick={onClose}
     >
       <div
-        className={`bg-surface dark:bg-dark-surface rounded-3xl shadow-cine-lg w-full ${widths[size]} animate-scale-in`}
+        className={`bg-surface dark:bg-dark-surface rounded-3xl shadow-cine-lg w-full ${widths[size]} max-h-[90vh] overflow-y-auto animate-scale-in`}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <div className="px-6 pt-5 pb-4 border-b border-[var(--border)] flex items-center justify-between">
+          <div className="px-6 pt-5 pb-4 border-b border-[var(--border)] flex items-center justify-between sticky top-0 bg-surface dark:bg-dark-surface z-10">
             <h2 className="font-bold text-lg">{title}</h2>
             <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-[var(--surface-2)] text-[var(--text-muted)] transition-colors">
               ✕
@@ -124,7 +128,8 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
         )}
         <div className="p-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
