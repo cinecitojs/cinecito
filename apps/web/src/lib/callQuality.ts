@@ -23,17 +23,27 @@ export const VIDEO_LADDER: QualityLevel[] = [
 export const MAX_LEVEL = VIDEO_LADDER.length - 1;
 
 // ── ICE / transporte ──────────────────────────────────────────
+// Las URLs de ICE DEBEN tener esquema (stun:/stuns:/turn:/turns:). Si VITE_TURN_URL
+// viene como "host:puerto" sin esquema, el constructor de RTCPeerConnection LANZA y
+// rompe la llamada (justo el bug que dejaba al 2º usuario cargando). Lo normalizamos.
+function normalizeIceUrl(u: string): string {
+  return /^(stuns?|turns?):/i.test(u) ? u : `turn:${u}`;
+}
+
 export function getIceServers(): RTCIceServer[] {
   const servers: RTCIceServer[] = [
     { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   ];
-  const url = import.meta.env.VITE_TURN_URL;
-  if (url) {
-    servers.push({
-      urls: url.split(',').map((u) => u.trim()).filter(Boolean),
-      username: import.meta.env.VITE_TURN_USERNAME,
-      credential: import.meta.env.VITE_TURN_CREDENTIAL,
-    });
+  const raw = import.meta.env.VITE_TURN_URL;
+  if (raw) {
+    const urls = raw.split(',').map((u) => u.trim()).filter(Boolean).map(normalizeIceUrl);
+    if (urls.length) {
+      servers.push({
+        urls,
+        username: import.meta.env.VITE_TURN_USERNAME,
+        credential: import.meta.env.VITE_TURN_CREDENTIAL,
+      });
+    }
   }
   return servers;
 }

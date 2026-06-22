@@ -133,7 +133,16 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
 
   // ── Crear una conexión peer hacia un socket destino ───────
   const createPeerConnection = useCallback((targetSocketId: string, isInitiator: boolean, forceRelay = false) => {
-    const pc = new RTCPeerConnection(pcConfig(forceRelay));
+    // Defensa: si la config ICE es inválida (p.ej. una URL de TURN mal formada en
+    // VITE_TURN_URL) el constructor LANZA. No dejamos que eso rompa el join → fallback
+    // a STUN público. (Sin este guard, el 2º usuario quedaba cargando para siempre.)
+    let pc: RTCPeerConnection;
+    try {
+      pc = new RTCPeerConnection(pcConfig(forceRelay));
+    } catch (err) {
+      console.warn('[call] config ICE inválida, usando STUN-only:', err);
+      pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    }
     (pc as any).__initiator = isInitiator;
     (pc as any).__relay = forceRelay;
 
@@ -265,7 +274,10 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
         const peerMap: Record<string, VoicePeer> = {};
         existingPeers.forEach((p) => {
           peerMap[p.socketId] = p;
-          createPeerConnection(p.socketId, true);
+          // Si una conexión peer falla al crearse, NO abortamos el join: el usuario
+          // igual entra a la llamada (antes esto dejaba al 2º usuario en "connecting").
+          try { createPeerConnection(p.socketId, true); }
+          catch (err) { console.warn('[call] no se pudo crear la conexión con', p.socketId, err); }
         });
         setPeers(peerMap);
         setInVoice(true);
