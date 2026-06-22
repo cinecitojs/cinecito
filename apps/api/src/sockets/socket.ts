@@ -396,6 +396,26 @@ export default fp(async function (fastify, _opts) {
       }
     });
 
+    // ── room-reaction (reacción flotante EFÍMERA sobre el video) ───────
+    // No se persiste: se difunde a toda la sala y desaparece sola en el cliente.
+    // Whitelist + rate-limit suave para que no se pueda spamear ni inyectar texto.
+    const REACTION_EMOJIS = new Set(['❤️', '😂', '😮', '👏', '🔥', '😍', '😢', '👍', '🎉', '💯']);
+    socket.on('room-reaction', async (data) => {
+      try {
+        const { roomId, emoji } = (data as any) || {};
+        if (!userId || !roomId || !REACTION_EMOJIS.has(emoji)) return;
+        // Hasta ~8 reacciones cada 4s por usuario: expresivo pero sin inundar.
+        if (!(await checkRate(`rreact:${userId}`, 8, 4000))) return;
+        const room = await prisma.room.findUnique({ where: { id: roomId } });
+        if (!room) return;
+        if (room.isPrivate && !(await isMemberOrOwner(roomId, userId))) return;
+        // Incluye al emisor (io.to) para que vea su propia reacción sincronizada.
+        io.to(roomId).emit('room-reaction', { emoji, userId });
+      } catch (err: any) {
+        logger.error({ err }, 'room-reaction failed');
+      }
+    });
+
     // ── typing-start / typing-stop ────────────────────────
     socket.on('typing-start', async (data) => {
       const { roomId } = (data as any) || {};

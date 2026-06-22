@@ -54,6 +54,13 @@ module.exports = {
           '0%':   { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition:  '200% 0' },
         },
+        // Reacción flotante: nace abajo, sube y se desvanece.
+        'reaction-float': {
+          '0%':   { opacity: '0', transform: 'translateY(0) scale(0.6)' },
+          '12%':  { opacity: '1', transform: 'translateY(-12%) scale(1.15)' },
+          '70%':  { opacity: '1' },
+          '100%': { opacity: '0', transform: 'translateY(-200%) scale(0.95)' },
+        },
       },
       animation: {
         'float':      'float 3s ease-in-out infinite',
@@ -62,6 +69,7 @@ module.exports = {
         'scale-in':   'scale-in 0.3s ease-out both',
         'fade-in':    'fade-in 0.3s ease-out both',
         'shimmer':    'shimmer 1.5s infinite linear',
+        'reaction-float': 'reaction-float 2.6s ease-out forwards',
       },
     },
   },

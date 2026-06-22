@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft, Crown, Users, MessageSquare, Play, Settings2, Link as LinkIcon,
   Clapperboard, Minimize2, Phone, PhoneOff, UserPlus, Inbox, Flag,
+  HelpCircle, RotateCw, X,
 } from 'lucide-react';
 import { roomsApi, messagesApi, uploadsApi } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
@@ -27,12 +28,35 @@ import { RequestAccessScreen, JoinRequestsPanel, type AccessState, type JoinRequ
 import ReportModal, { type ReportTarget } from '../components/ReportModal';
 import RoomThemeBackdrop from '../components/room/RoomThemeBackdrop';
 import { useSupporter } from '../hooks/useSupporter';
+import { ReactionsOverlay, ReactionBar, useFloatingReactions } from '../components/room/FloatingReactions';
+import OnboardingTour, { TOUR_SEEN_KEY } from '../components/room/OnboardingTour';
 
 const DEFAULT_PERMS: RoomPermissions = {
   addVideo: 'host', removeVideo: 'host', skip: 'host', pauseResume: 'everyone', seek: 'everyone',
 };
 
 type MobileTab = 'video' | 'chat' | 'sala';
+
+// Video + capa de reacciones flotantes + barra de emojis. Definido a nivel de
+// módulo (identidad estable) para que VideoStage NO se remonte en cada render.
+function StageWithReactions({
+  stageProps, items, onReact, compactBar, hideBar,
+}: {
+  stageProps: any;
+  items: { id: number; emoji: string; left: number; drift: number; scale: number }[];
+  onReact: (emoji: string) => void;
+  compactBar?: boolean;
+  hideBar?: boolean;
+}) {
+  return (
+    <div className="relative">
+      <VideoStage {...stageProps} />
+      <ReactionsOverlay items={items} />
+      {/* Arriba a la derecha: no tapa la barra de controles del reproductor (abajo). */}
+      {!hideBar && <ReactionBar onPick={onReact} compact={compactBar} className="absolute top-2 right-2 z-30" />}
+    </div>
+  );
+}
 
 export default function Room() {
   const { id: roomId } = useParams<{ id: string }>();
@@ -73,8 +97,21 @@ export default function Room() {
   // los dos, hay dos <VideoStage> y `display:none` NO frena el audio → audio doble.
   const isDesktop = useMediaQuery('(min-width: 768px)');
 
+  // ── Orientación / dispositivo táctil (modo cine automático) ──
+  // `isTouch` distingue móvil/tablet de PC (no por ancho: una tablet en horizontal
+  // puede ser ancha). En táctiles el modo cine sigue la orientación por defecto.
+  const isTouch     = useMediaQuery('(pointer: coarse)');
+  const isLandscape = useMediaQuery('(orientation: landscape)');
+
   // ── Modo cine (#3) + widgets flotantes PiP (#4) + salida (#1) ──
-  const [theater, setTheater]   = useState(() => localStorage.getItem('cinecito_theater') === '1');
+  // En táctiles arranca según la orientación (horizontal = cine). En PC, lo guardado.
+  const [theater, setTheater]   = useState(() => {
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        && window.matchMedia('(pointer: coarse)').matches) {
+      return window.matchMedia('(orientation: landscape)').matches;
+    }
+    return localStorage.getItem('cinecito_theater') === '1';
+  });
   const [showChatW, setShowChatW] = useState(() => localStorage.getItem('cinecito_w_chat') !== '0');
   const [showCallW, setShowCallW] = useState(() => localStorage.getItem('cinecito_w_call') !== '0');
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -82,6 +119,37 @@ export default function Room() {
   useEffect(() => { localStorage.setItem('cinecito_theater', theater ? '1' : '0'); }, [theater]);
   useEffect(() => { localStorage.setItem('cinecito_w_chat', showChatW ? '1' : '0'); }, [showChatW]);
   useEffect(() => { localStorage.setItem('cinecito_w_call', showCallW ? '1' : '0'); }, [showCallW]);
+
+  // Modo cine automático por orientación (solo táctiles): al girar a horizontal
+  // se activa por defecto; al volver a vertical se sale. El usuario puede
+  // sobreescribirlo con el botón hasta el próximo giro.
+  const lastLandscapeRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!isTouch) return;
+    if (lastLandscapeRef.current === null) { lastLandscapeRef.current = isLandscape; return; }
+    if (isLandscape !== lastLandscapeRef.current) {
+      lastLandscapeRef.current = isLandscape;
+      setTheater(isLandscape);
+    }
+  }, [isTouch, isLandscape]);
+
+  // Hint "girar pantalla" (descartable, recordado por sesión).
+  const [rotateHintOff, setRotateHintOff] = useState(() => sessionStorage.getItem('cinecito_rotate_hint') === '0');
+  const dismissRotateHint = useCallback(() => {
+    setRotateHintOff(true);
+    sessionStorage.setItem('cinecito_rotate_hint', '0');
+  }, []);
+
+  // Cajón (chat / sala) dentro del modo cine móvil.
+  const [cineDrawer, setCineDrawer] = useState<'none' | 'chat' | 'sala'>('none');
+
+  // Reacciones flotantes efímeras (#8).
+  const reactions = useFloatingReactions();
+
+  // Mini tutorial de bienvenida (onboarding).
+  const [tourOpen, setTourOpen] = useState(false);
+  const tourCheckedRef = useRef(false);
+  const closeTour = useCallback(() => { setTourOpen(false); try { localStorage.setItem(TOUR_SEEN_KEY, '1'); } catch { /* */ } }, []);
 
   // Reloj: offset entre el servidor y este cliente.
   const serverOffsetRef = useRef(0);
@@ -107,6 +175,19 @@ export default function Room() {
     token,
     onDisconnect: () => toast('Conexión perdida. Reconectando…', 'error'),
   });
+
+  // Enviar reacción: el servidor la difunde a TODA la sala (incluido el emisor),
+  // así todos ven lo mismo. El spawn local ocurre al recibir el eco.
+  const pickReaction = useCallback((emoji: string) => {
+    if (roomId) socket.sendReaction(roomId, emoji);
+  }, [roomId]);
+
+  // Abre el mini tutorial la primera vez (una sola vez, al cargar la sala).
+  useEffect(() => {
+    if (tourCheckedRef.current || !room) return;
+    tourCheckedRef.current = true;
+    try { if (!localStorage.getItem(TOUR_SEEN_KEY)) setTourOpen(true); } catch { /* */ }
+  }, [room]);
 
   // La llamada vive a nivel de app (CallProvider) → sobrevive al salir de la sala.
   const voice = useCall();
@@ -260,6 +341,8 @@ export default function Room() {
       socket.on('voice-slot-free', () => {
         if (waitingRef.current) toast('¡Se liberó un lugar en la videollamada! Tocá "Unirse" 🎥', 'success');
       }),
+      // Reacción flotante efímera (#8): spawnea el emoji sobre el video.
+      socket.on<{ emoji: string }>('room-reaction', ({ emoji }) => reactions.spawn(emoji)),
       socket.on<{ typingUserIds: string[] }>('typing-update', ({ typingUserIds }) =>
         setTypingIds(typingUserIds)),
       socket.on<{ permissions: RoomPermissions }>('permissions-updated', ({ permissions }) =>
@@ -521,13 +604,29 @@ export default function Room() {
             aria-label="Invitar amigos" title="Invitar amigos">
             <UserPlus className="w-4 h-4" /> <span className="hidden sm:inline">Invitar</span>
           </button>
-          {isDesktop && (
+          {/* Modo cine: en táctiles muestra TEXTO ("Modo cine" / "Salir de modo cine"),
+              en PC un botón-ícono con atajo F. */}
+          {isTouch ? (
+            <button onClick={() => setTheater((t) => !t)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs font-semibold whitespace-nowrap shrink-0
+                ${theater ? 'bg-primary text-white' : 'bg-[var(--surface-2)] dark:bg-dark-surface2 hover:bg-primary/10'}`}
+              aria-label={theater ? 'Salir de modo cine' : 'Modo cine'}
+              title={theater ? 'Salir de modo cine' : 'Modo cine'}>
+              {theater ? <Minimize2 className="w-4 h-4" /> : <Clapperboard className="w-4 h-4" />}
+              <span className="hidden min-[420px]:inline">{theater ? 'Salir de modo cine' : 'Modo cine'}</span>
+            </button>
+          ) : isDesktop && (
             <button onClick={() => setTheater((t) => !t)}
               className={`p-2 rounded-xl transition-colors ${theater ? 'bg-primary text-white' : 'hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2'}`}
               aria-label="Modo cine" title="Modo cine (F)">
               {theater ? <Minimize2 className="w-4 h-4" /> : <Clapperboard className="w-4 h-4" />}
             </button>
           )}
+          <button onClick={() => setTourOpen(true)}
+            className="p-2 rounded-xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-colors text-[var(--text-muted)] hover:text-primary"
+            aria-label="Guía de la sala" title="¿Cómo funciona? Ver guía">
+            <HelpCircle className="w-4 h-4" />
+          </button>
           {isHost && (room as any)?.inviteOnly && (
             <button onClick={() => setShowRequests(true)}
               className="relative p-2 rounded-xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-colors"
@@ -571,7 +670,7 @@ export default function Room() {
           <div className="flex-1 min-h-0 flex items-center justify-center p-3 overflow-hidden">
             {/* Acota el ancho para que el alto 16:9 entre completo en el área disponible */}
             <div className="w-full mx-auto" style={{ maxWidth: 'calc((100dvh - 6rem) * 16 / 9)' }}>
-              <VideoStage {...stageProps} />
+              <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} />
             </div>
           </div>
 
@@ -617,7 +716,7 @@ export default function Room() {
         <div className="flex-1 flex gap-4 p-4 min-h-0">
           {/* Columna principal: si el video + cola exceden el alto, scrollea ACÁ (no rompe el chat) */}
           <div className="flex-1 flex flex-col gap-4 min-w-0 min-h-0 overflow-y-auto">
-            <VideoStage {...stageProps} />
+            <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} />
             <VideoQueue {...queueProps} />
           </div>
           {/* Columna lateral: participantes + voz arriba (alto natural, sin que el
@@ -629,6 +728,59 @@ export default function Room() {
           </div>
         </div>
         )
+      ) : theater ? (
+        /* ── Modo cine móvil/tablet inmersivo (auto en horizontal) ── */
+        <div className="flex-1 relative bg-black flex flex-col min-h-0">
+          <div className="flex-1 min-h-0 flex items-center justify-center p-1 overflow-hidden">
+            <div className="w-full mx-auto" style={{ maxWidth: 'min(100%, calc((100dvh - 6rem) * 16 / 9))' }}>
+              <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} hideBar />
+            </div>
+          </div>
+
+          {/* Controles flotantes: reacciones + acceso a chat / sala */}
+          <div className="absolute inset-x-0 bottom-3 z-40 flex items-center justify-center gap-2 px-3 pointer-events-none">
+            <div className="pointer-events-auto"><ReactionBar onPick={pickReaction} compact /></div>
+            <button onClick={() => setCineDrawer((d) => (d === 'chat' ? 'none' : 'chat'))}
+              className={`pointer-events-auto relative w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border border-white/10 transition-colors
+                ${cineDrawer === 'chat' ? 'bg-primary text-white' : 'bg-black/40 text-white hover:bg-black/60'}`}
+              aria-label="Chat" title="Chat">
+              <MessageSquare className="w-5 h-5" />
+              {unreadChat > 0 && cineDrawer !== 'chat' && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-secondary text-white text-[10px] flex items-center justify-center font-bold">
+                  {unreadChat > 9 ? '9+' : unreadChat}
+                </span>
+              )}
+            </button>
+            <button onClick={() => setCineDrawer((d) => (d === 'sala' ? 'none' : 'sala'))}
+              className={`pointer-events-auto w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border border-white/10 transition-colors
+                ${cineDrawer === 'sala' ? 'bg-primary text-white' : 'bg-black/40 text-white hover:bg-black/60'}`}
+              aria-label="Sala" title="Participantes y videollamada">
+              <Users className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Cajón inferior: chat o panel de sala (no rompe el video que sigue detrás) */}
+          {cineDrawer !== 'none' && (
+            <div className="absolute inset-x-0 bottom-0 z-50 h-[68%] bg-surface dark:bg-dark-surface rounded-t-3xl shadow-cine-lg flex flex-col animate-slide-up">
+              <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)]">
+                <span className="font-bold text-sm">{cineDrawer === 'chat' ? 'Chat' : 'Sala'}</span>
+                <button onClick={() => setCineDrawer('none')}
+                  className="p-1.5 rounded-xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 text-[var(--text-muted)] transition-colors"
+                  aria-label="Cerrar">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {cineDrawer === 'chat' ? (
+                <div className="flex-1 min-h-0 p-2"><ChatPanel {...chatPanelProps} /></div>
+              ) : (
+                <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+                  <ParticipantsPanel {...participantsProps} />
+                  <VoicePanel {...voiceProps} />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       ) : (
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 min-h-0 flex flex-col">
@@ -637,7 +789,7 @@ export default function Room() {
               {/* Acota el ANCHO del video para que su alto 16:9 entre completo en
                   cualquier orientación: full-width en vertical, letterbox en horizontal. */}
               <div className="mx-auto w-full" style={{ maxWidth: 'min(100%, calc((100dvh - 11rem) * 16 / 9))' }}>
-                <VideoStage {...stageProps} />
+                <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} compactBar />
               </div>
               <VideoQueue {...queueProps} />
             </div>
@@ -737,6 +889,23 @@ export default function Room() {
           </div>
         </div>
       </Modal>
+
+      {/* Sugerencia "girar pantalla" — solo táctiles, vertical, fuera del modo cine. Discreta y descartable. */}
+      {isTouch && !isLandscape && !theater && !rotateHintOff && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-[4.75rem] z-40 flex items-center gap-2 max-w-[92vw]
+          bg-dark-bg/90 dark:bg-dark-surface/95 text-white text-xs font-semibold pl-3 pr-1.5 py-1.5 rounded-full shadow-cine-lg backdrop-blur-sm animate-slide-up">
+          <button onClick={() => setTheater(true)} className="flex items-center gap-1.5" aria-label="Activar modo cine">
+            <RotateCw className="w-4 h-4 text-primary shrink-0" />
+            Girá la pantalla para activar modo cine
+          </button>
+          <button onClick={dismissRotateHint} className="p-1 rounded-full hover:bg-white/15 transition-colors shrink-0" aria-label="Descartar sugerencia">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Mini tutorial de bienvenida (onboarding) */}
+      <OnboardingTour open={tourOpen} onClose={closeTour} />
     </div>
   );
 }

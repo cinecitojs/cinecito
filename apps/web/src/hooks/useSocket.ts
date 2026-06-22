@@ -126,6 +126,11 @@ export function useSocket({ token, onConnect, onDisconnect, onError }: UseSocket
     socketRef.current?.emit('message-reaction', { roomId, messageId, emoji });
   }, []);
 
+  // ── Reacción flotante efímera (no se persiste) ───────────
+  const sendReaction = useCallback((roomId: string, emoji: string) => {
+    socketRef.current?.emit('room-reaction', { roomId, emoji });
+  }, []);
+
   // ── Typing ───────────────────────────────────────────────
   const startTyping = useCallback((roomId: string) => {
     socketRef.current?.emit('typing-start', { roomId });
@@ -195,6 +200,7 @@ export function useSocket({ token, onConnect, onDisconnect, onError }: UseSocket
     leaveRoom,
     sendMessage,
     reactToMessage,
+    sendReaction,
     requestJoin,
     listJoinRequests,
     respondJoinRequest,
