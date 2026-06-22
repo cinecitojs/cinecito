@@ -3,12 +3,13 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import {
-  Mic, MicOff, Video, VideoOff, PhoneOff, Phone, Loader2, Volume2,
+  Mic, MicOff, Video, VideoOff, PhoneOff, Phone, Loader2, Volume2, Activity,
 } from 'lucide-react';
 import { Avatar } from '../ui';
 import CallLobby from './CallLobby';
-import type { VoicePeer } from '../../hooks/useVoiceChat';
+import type { VoicePeer, PeerStat } from '../../hooks/useVoiceChat';
 import type { NetQuality } from '../../lib/callQuality';
+import { usePageVisible } from '../../hooks/usePageVisible';
 
 // Punto de calidad de red: verde (bien) · ámbar (media/reconectando) · rojo (mala).
 const QUALITY_UI: Record<NetQuality, { color: string; label: string; pulse?: boolean }> = {
@@ -27,13 +28,16 @@ function QualityDot({ q, className = '' }: { q?: NetQuality; className?: string 
 // ── Video de un peer (si tiene cámara activa) ────────────────
 // El AUDIO se reproduce en el sink global (CallAudioSink) para que siga
 // sonando al salir de la sala; acá el video va SILENCIADO (evita audio doble).
-function PeerVideo({ stream, name }: { stream?: MediaStream; name: string }) {
+const PeerVideo = React.memo(function PeerVideo({ stream, name }: { stream?: MediaStream; name: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const visible = usePageVisible();
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-    }
-  }, [stream]);
+    const el = videoRef.current;
+    if (!el) return;
+    // Pausa el DECODE del video cuando la pestaña está oculta (ahorra CPU/batería).
+    // El audio NO se ve afectado: se reproduce aparte en CallAudioSink.
+    el.srcObject = stream && visible ? stream : null;
+  }, [stream, visible]);
   return (
     <video
       ref={videoRef}
@@ -42,7 +46,7 @@ function PeerVideo({ stream, name }: { stream?: MediaStream; name: string }) {
       aria-label={`Video de ${name}`}
     />
   );
-}
+});
 
 interface VoicePanelProps {
   inVoice: boolean;
@@ -56,6 +60,7 @@ interface VoicePanelProps {
   localStream: React.MutableRefObject<MediaStream | null>;
   netQuality?: NetQuality;
   peerQuality?: Record<string, NetQuality>;
+  peerStats?: Record<string, PeerStat>;
   saving?: boolean;
   onJoin: (withVideo?: boolean) => void;
   onLeave: () => void;
@@ -65,12 +70,13 @@ interface VoicePanelProps {
 
 export default function VoicePanel({
   inVoice, muted, videoOn, connecting, error, peers, speaking,
-  currentUsername, localStream, netQuality, peerQuality, saving,
+  currentUsername, localStream, netQuality, peerQuality, peerStats, saving,
   onJoin, onLeave, onToggleMute, onToggleVideo,
 }: VoicePanelProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const [lobbyOpen, setLobbyOpen]   = useState(false);
   const [lobbyVideo, setLobbyVideo] = useState(false);
+  const [showStats, setShowStats]   = useState(false);
 
   // Mostrar el video local propio
   useEffect(() => {
@@ -151,6 +157,10 @@ export default function VoicePanel({
           <span className="font-bold text-sm">En llamada</span>
           <QualityDot q={netQuality} className="ml-1" />
           <span className="ml-auto text-xs text-[var(--text-muted)]">{totalInCall} conectados</span>
+          <button onClick={() => setShowStats((v) => !v)} title="Estado de red (diagnóstico)" aria-label="Estado de red"
+            className={`p-1 rounded-lg transition-colors ${showStats ? 'text-primary bg-primary/10' : 'text-[var(--text-muted)] hover:text-primary'}`}>
+            <Activity className="w-3.5 h-3.5" />
+          </button>
         </div>
         {saving && (
           <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
@@ -159,6 +169,25 @@ export default function VoicePanel({
         )}
         {netQuality === 'reconnecting' && (
           <p className="text-[11px] text-[var(--text-muted)] mt-1">Reconectando con algún participante…</p>
+        )}
+        {showStats && (
+          <div className="mt-2 rounded-xl bg-[var(--surface-2)]/60 dark:bg-dark-surface2/60 p-2 space-y-1">
+            {peerList.length === 0 && <p className="text-[11px] text-[var(--text-muted)]">Sin pares conectados aún.</p>}
+            {peerList.map((p) => {
+              const s = peerStats?.[p.socketId];
+              const ladder = ['Alta', 'Alta', 'Media', 'Baja'];
+              return (
+                <div key={p.socketId} className="flex items-center gap-2 text-[11px]">
+                  <QualityDot q={peerQuality?.[p.socketId]} />
+                  <span className="font-semibold truncate max-w-[5rem]">{p.username}</span>
+                  <span className="ml-auto tabular-nums text-[var(--text-muted)]">
+                    {s ? `${s.rttMs}ms · ${(s.lossPct * 100).toFixed(0)}% pérdida · ${ladder[s.level] ?? '—'} · ${s.ice}` : '—'}
+                  </span>
+                </div>
+              );
+            })}
+            <p className="text-[10px] text-[var(--text-muted)] pt-1">RTT · pérdida de paquetes · calidad de video · estado ICE</p>
+          </div>
         )}
       </div>
 

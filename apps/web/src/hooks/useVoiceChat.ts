@@ -11,9 +11,12 @@ import type { Socket } from 'socket.io-client';
 import { mediaErrorMessage } from '../lib/mediaErrors';
 import { audioConstraints, videoConstraints } from '../lib/mediaConstraints';
 import {
-  pcConfig, prioritizeMedia, applyVideoLevel, hintMotion,
+  pcConfig, prioritizeMedia, applyVideoLevel, hintMotion, hasTurn, MAX_LEVEL,
   samplePeer, decideLevel, levelToQuality, type NetQuality,
 } from '../lib/callQuality';
+
+// Métricas por peer para el panel de diagnóstico.
+export interface PeerStat { rttMs: number; lossPct: number; level: number; ice: string; }
 
 export interface VoicePeer {
   socketId: string;
@@ -43,7 +46,9 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
   // Estado de red (para indicadores): agregado + por peer + "modo ahorro".
   const [netQuality, setNetQuality] = useState<NetQuality>('good');
   const [peerQuality, setPeerQuality] = useState<Record<string, NetQuality>>({});
+  const [peerStats, setPeerStats]   = useState<Record<string, PeerStat>>({});
   const [saving, setSaving]         = useState(false);
+  const bgRef = useRef(false); // true = pestaña oculta → video propio al mínimo
 
   const [callRoomId, setCallRoomId] = useState<string | null>(null);
   const roomIdRef = useRef<string | null>(null);
@@ -127,9 +132,10 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
   }, []);
 
   // ── Crear una conexión peer hacia un socket destino ───────
-  const createPeerConnection = useCallback((targetSocketId: string, isInitiator: boolean) => {
-    const pc = new RTCPeerConnection(pcConfig());
+  const createPeerConnection = useCallback((targetSocketId: string, isInitiator: boolean, forceRelay = false) => {
+    const pc = new RTCPeerConnection(pcConfig(forceRelay));
     (pc as any).__initiator = isInitiator;
+    (pc as any).__relay = forceRelay;
 
     // Agregar pistas locales (audio/video) a la conexión.
     if (localStreamRef.current) {
@@ -168,10 +174,19 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
             const now = pc.connectionState;
             if (now === 'connected' || now === 'closed') return;
             if ((pc as any).__initiator) void restartIce(targetSocketId, pc);
-            // Si tras el intento sigue caída un rato largo, la cerramos.
+            // Si tras el intento sigue caída un rato largo: último recurso = reconstruir
+            // la conexión forzando relay por TURN (NAT simétrico/CGNAT). Si no hay TURN
+            // o ya estábamos en relay, la cerramos.
             reconnectTimersRef.current[targetSocketId] = window.setTimeout(() => {
               delete reconnectTimersRef.current[targetSocketId];
-              if (pc.connectionState !== 'connected') closePeer(targetSocketId);
+              if (pc.connectionState === 'connected') return;
+              if (hasTurn() && !(pc as any).__relay && (pc as any).__initiator) {
+                try { pc.close(); } catch { /* */ }
+                delete peerConnsRef.current[targetSocketId];
+                createPeerConnection(targetSocketId, true, true); // forceRelay
+              } else {
+                closePeer(targetSocketId);
+              }
             }, 12_000);
           }, cs === 'failed' ? 600 : 4_000);
         }
@@ -281,8 +296,10 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
     if (audioCtxRef.current) { try { audioCtxRef.current.close(); } catch { /* */ } audioCtxRef.current = null; }
     setSpeaking({});
     setPeerQuality({});
+    setPeerStats({});
     setNetQuality('good');
     setSaving(false);
+    bgRef.current = false;
   }, []);
 
   // ── Salir del canal de voz ────────────────────────────────
@@ -352,22 +369,29 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
       const entries = Object.entries(peerConnsRef.current);
       if (entries.length === 0) return;
       const q: Record<string, NetQuality> = {};
+      const stats: Record<string, PeerStat> = {};
       let anyReconnecting = false, anySaving = false, worst = 0;
 
       for (const [sid, pc] of entries) {
         const cs = pc.connectionState;
         if (cs === 'disconnected' || cs === 'failed' || cs === 'connecting' || cs === 'new') {
-          q[sid] = 'reconnecting'; anyReconnecting = true; continue;
+          q[sid] = 'reconnecting'; anyReconnecting = true;
+          stats[sid] = { rttMs: 0, lossPct: 0, level: adaptRef.current[sid]?.level ?? 0, ice: pc.iceConnectionState };
+          continue;
         }
         if (cs !== 'connected') continue;
         const st = adaptRef.current[sid] ?? { level: 0, goodStreak: 0 };
         const sample = await samplePeer(pc);
-        const dec = decideLevel(sample, st.level, st.goodStreak);
+        // Pestaña oculta → mantenemos el video propio al mínimo (no subir).
+        const dec = bgRef.current
+          ? { level: MAX_LEVEL, goodStreak: 0 }
+          : decideLevel(sample, st.level, st.goodStreak);
         adaptRef.current[sid] = dec;
         if (dec.level !== st.level) await applyVideoLevel(pc, dec.level);
         if (dec.level >= 2) anySaving = true;
         worst = Math.max(worst, dec.level);
         q[sid] = levelToQuality(dec.level);
+        stats[sid] = { rttMs: Math.round(sample.rtt * 1000), lossPct: sample.lossPct, level: dec.level, ice: pc.iceConnectionState };
       }
 
       setPeerQuality((prev) => {
@@ -375,10 +399,27 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
         for (const k of keys) if (prev[k] !== q[k]) return q;
         return prev;
       });
+      setPeerStats(stats);
       setSaving(anySaving);
       setNetQuality(anyReconnecting ? 'reconnecting' : worst <= 1 ? 'good' : worst === 2 ? 'medium' : 'poor');
     }, 3_000);
     return () => clearInterval(id);
+  }, [inVoice]);
+
+  // ── Optimización por visibilidad ──────────────────────────
+  // Pestaña/ventana oculta → bajamos NUESTRO video al mínimo al instante (ahorra CPU
+  // y banda de TODOS los que nos reciben). Al volver, el monitor lo sube gradualmente.
+  // (El decode del video remoto se pausa en los componentes vía usePageVisible.)
+  useEffect(() => {
+    if (!inVoice) return;
+    const onVis = () => {
+      bgRef.current = document.visibilityState === 'hidden';
+      if (bgRef.current) {
+        Object.values(peerConnsRef.current).forEach((pc) => { void applyVideoLevel(pc, MAX_LEVEL); });
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, [inVoice]);
 
   // ── Escuchar eventos de señalización del socket ───────────
@@ -453,6 +494,7 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
     callRoomId,
     netQuality,
     peerQuality,
+    peerStats,
     saving,
     joinVoice,
     leaveVoice,

@@ -10,12 +10,15 @@ import { useCall } from '../providers/CallProvider';
 import { useAuthStore } from '../store/useAuthStore';
 import { Avatar } from './ui';
 import FloatingWidget from './FloatingWidget';
+import { usePageVisible } from '../hooks/usePageVisible';
 
-function Tile({ name, stream, videoOn, muted, speaking }: {
+const Tile = React.memo(function Tile({ name, stream, videoOn, muted, speaking }: {
   name: string; stream?: MediaStream | null; videoOn?: boolean; muted?: boolean; speaking?: boolean;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
-  useEffect(() => { if (ref.current && stream) ref.current.srcObject = stream; }, [stream]);
+  const visible = usePageVisible();
+  // Pausa el decode cuando la pestaña está oculta (el audio sigue por CallAudioSink).
+  useEffect(() => { if (ref.current) ref.current.srcObject = stream && visible ? stream : null; }, [stream, visible]);
   return (
     <div className={`relative aspect-square rounded-xl bg-[var(--surface-2)] dark:bg-dark-surface2 overflow-hidden flex items-center justify-center transition-shadow
       ${speaking && !muted ? 'ring-2 ring-online ring-offset-1 ring-offset-surface dark:ring-offset-dark-surface' : ''}`}>
@@ -29,7 +32,7 @@ function Tile({ name, stream, videoOn, muted, speaking }: {
       )}
     </div>
   );
-}
+});
 
 export default function CallWidget() {
   const call = useCall();

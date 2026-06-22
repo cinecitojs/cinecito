@@ -38,10 +38,22 @@ export function getIceServers(): RTCIceServer[] {
   return servers;
 }
 
+// ¿Hay TURN configurado? (sin TURN no hay fallback de relay posible).
+export function hasTurn(): boolean {
+  return !!import.meta.env.VITE_TURN_URL;
+}
+
 // max-bundle = un solo transporte para audio+video (menos puertos/candidatos → conecta
 // más rápido y con menos overhead). El pool precalienta candidatos ICE.
-export function pcConfig(): RTCConfiguration {
-  return { iceServers: getIceServers(), bundlePolicy: 'max-bundle', iceCandidatePoolSize: 2 };
+// forceRelay → iceTransportPolicy:'relay': ignora candidatos directos y va SOLO por
+// TURN. Es el fallback cuando la conexión P2P directa fracasa (NAT simétrico/CGNAT).
+export function pcConfig(forceRelay = false): RTCConfiguration {
+  return {
+    iceServers: getIceServers(),
+    bundlePolicy: 'max-bundle',
+    iceCandidatePoolSize: 2,
+    ...(forceRelay ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {}),
+  };
 }
 
 // ── Prioridades + preferencia de degradación ──────────────────
