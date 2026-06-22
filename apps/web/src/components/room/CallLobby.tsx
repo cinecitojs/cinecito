@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Video, VideoOff, Phone, ShieldAlert, Loader2, Camera } from 'lucide-react';
 import { Modal, Button } from '../ui';
 import { getSettings } from '../../store/useSettings';
+import { mediaErrorMessage } from '../../lib/mediaErrors';
 
 type Phase = 'checking' | 'blocked' | 'denied' | 'error' | 'ready';
 
@@ -79,7 +80,7 @@ export default function CallLobby({ open, startWithVideo = false, username, onCl
       setPhase('ready');
     } catch (e: any) {
       if (e?.name === 'NotAllowedError' || e?.name === 'SecurityError') setPhase('denied');
-      else { setErrMsg(e?.message || 'No se pudo acceder a los dispositivos'); setPhase('error'); }
+      else { setErrMsg(mediaErrorMessage(e, withVideo)); setPhase('error'); }
     }
   }, [attachMeter, stopStream]);
 

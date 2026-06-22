@@ -4,6 +4,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import type { Socket } from 'socket.io-client';
 import { getSettings } from '../store/useSettings';
+import { mediaErrorMessage } from '../lib/mediaErrors';
 
 // Servidores STUN públicos (descubren la IP pública detrás del NAT)
 const ICE_SERVERS: RTCIceServer[] = [
@@ -213,11 +214,7 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
         setConnecting(false);
       });
     } catch (err: any) {
-      setError(
-        err?.name === 'NotAllowedError'
-          ? 'Permiso de micrófono denegado'
-          : 'No se pudo acceder al micrófono',
-      );
+      setError(mediaErrorMessage(err, withVideo));
       roomIdRef.current = null;
       setCallRoomId(null);
       setConnecting(false);
@@ -302,8 +299,8 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
         }
         setVideoOn(true);
         socket.current?.emit('voice-video-toggle', { roomId: roomIdRef.current, videoEnabled: true });
-      } catch {
-        setError('No se pudo acceder a la cámara');
+      } catch (err) {
+        setError(mediaErrorMessage(err, true));
       }
     }
   }, [videoOn, socket]);
