@@ -6,6 +6,8 @@ interface ImportMetaEnv {
   readonly VITE_TURN_URL?: string;        // ej. turn:tu-servidor:3478 (coma-separable)
   readonly VITE_TURN_USERNAME?: string;
   readonly VITE_TURN_CREDENTIAL?: string;
+  // Monitoreo de errores (opcional). Si está, Sentry se inicializa en producción.
+  readonly VITE_SENTRY_DSN?: string;
 }
 
 interface ImportMeta {

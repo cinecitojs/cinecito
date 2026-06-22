@@ -6,6 +6,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './app/App';
 import './styles/index.css';
 
+// Monitoreo de errores: solo en producción y solo si hay DSN. La carga es dinámica,
+// así que en desarrollo (o sin DSN) @sentry/react ni siquiera entra al bundle.
+if (import.meta.env.PROD && import.meta.env.VITE_SENTRY_DSN) {
+  import('./lib/sentry').then((m) => m.initSentry()).catch(() => { /* no-op */ });
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

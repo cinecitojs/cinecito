@@ -1,28 +1,36 @@
 // apps/web/src/app/App.tsx  — FASE 2
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
+// Entrada inicial: eager (primer pintado rápido, sin flash de Suspense).
 import Landing    from '../pages/Landing';
 import Login      from '../pages/Login';
-import Register   from '../pages/Register';
-import Home       from '../pages/Home';
-import Explore    from '../pages/Explore';
-import GuestJoin  from '../pages/GuestJoin';
-import JoinRoom   from '../pages/JoinRoom';
-import InvitePreview from '../pages/InvitePreview';
-import Room       from '../pages/Room';
-import Settings   from '../pages/Settings';
-import LegalDoc   from '../pages/LegalDoc';
-import Support    from '../pages/Support';
-import Admin      from '../pages/Admin';
-import NotFound   from '../pages/NotFound';
-import { ToastContainer } from '../components/ui';
+// Resto: lazy (code-splitting #9) → no pesan en el bundle inicial.
+const Register     = lazy(() => import('../pages/Register'));
+const Home         = lazy(() => import('../pages/Home'));
+const Explore      = lazy(() => import('../pages/Explore'));
+const GuestJoin    = lazy(() => import('../pages/GuestJoin'));
+const JoinRoom     = lazy(() => import('../pages/JoinRoom'));
+const InvitePreview = lazy(() => import('../pages/InvitePreview'));
+const Room         = lazy(() => import('../pages/Room'));
+const Settings     = lazy(() => import('../pages/Settings'));
+const LegalDoc     = lazy(() => import('../pages/LegalDoc'));
+const Support      = lazy(() => import('../pages/Support'));
+const Admin        = lazy(() => import('../pages/Admin'));
+const NotFound     = lazy(() => import('../pages/NotFound'));
+import { ToastContainer, Spinner } from '../components/ui';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { CallProvider } from '../providers/CallProvider';
 import CallAudioSink from '../components/CallAudioSink';
 import CallWidget from '../components/CallWidget';
 import CookieBanner from '../components/CookieBanner';
 import SupportModal from '../components/SupportModal';
 import { useSupportModal } from '../store/useSupportModal';
+
+// Fallback mientras carga un chunk de ruta (code-splitting).
+function RouteFallback() {
+  return <div className="min-h-[100dvh] flex items-center justify-center"><Spinner size="lg" /></div>;
+}
 
 // ── Theme context ────────────────────────────────────────────
 export const ThemeContext = React.createContext<{
@@ -69,6 +77,8 @@ export default function App() {
     <ThemeContext.Provider value={{ theme, toggleTheme: toggle }}>
       <CallProvider>
       <ToastContainer />
+      <ErrorBoundary scope="app">
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* Públicas */}
         <Route path="/"         element={<Landing />} />
@@ -86,7 +96,7 @@ export default function App() {
         {/* Protegidas */}
         <Route path="/home"      element={<Protected><Home /></Protected>} />
         <Route path="/explore"   element={<Protected><Explore /></Protected>} />
-        <Route path="/room/:id"  element={<Protected><Room /></Protected>} />
+        <Route path="/room/:id"  element={<Protected><ErrorBoundary scope="room"><Room /></ErrorBoundary></Protected>} />
         {/* Perfil quedó unificado dentro de Ajustes (Configuración). */}
         <Route path="/profile"   element={<Navigate to="/configuracion" replace />} />
         <Route path="/configuracion" element={<Protected><Settings /></Protected>} />
@@ -97,6 +107,8 @@ export default function App() {
 
         <Route path="*" element={<NotFound />} />
       </Routes>
+      </Suspense>
+      </ErrorBoundary>
       <CallAudioSink />
       <CallWidget />
       <CookieBanner />
