@@ -393,6 +393,11 @@ export default function Room() {
     onlineUsers.unshift({ id: room.owner.id, username: room.owner.username });
   }
 
+  // ¿Estoy en la lista de espera por un cupo activo? (hook ANTES de cualquier return
+  // → respeta las Rules of Hooks). Ref espejo para usarlo en listeners del socket.
+  const isWaiting = !!user?.id && voiceRoomState.waitingUserIds.includes(user.id);
+  useEffect(() => { waitingRef.current = isWaiting; }, [isWaiting]);
+
   // Sala "Solo invitación" sin acceso: pantalla de solicitud (no depende del fetch de la sala,
   // que para un no-miembro devuelve 403).
   if (accessState !== 'ok') {
@@ -460,11 +465,6 @@ export default function Room() {
     onReportUser: (u: { id: string; username: string }) =>
       setReportTarget({ type: 'user', id: u.id, context: roomId, label: u.username }),
   };
-
-  // Estoy en la lista de espera por un cupo activo. Ref para usarlo dentro de
-  // listeners del socket (que capturarían un valor obsoleto del estado).
-  const isWaiting = !!user?.id && voiceRoomState.waitingUserIds.includes(user.id);
-  useEffect(() => { waitingRef.current = isWaiting; }, [isWaiting]);
 
   const voiceProps = {
     inVoice: inVoiceHere, muted: voice.muted, videoOn: voice.videoOn,
