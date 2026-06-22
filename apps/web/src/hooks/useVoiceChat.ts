@@ -3,8 +3,8 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react';
 import type { Socket } from 'socket.io-client';
-import { getSettings } from '../store/useSettings';
 import { mediaErrorMessage } from '../lib/mediaErrors';
+import { audioConstraints, videoConstraints, capSenderBitrate } from '../lib/mediaConstraints';
 
 // Servidores STUN públicos (descubren la IP pública detrás del NAT)
 const ICE_SERVERS: RTCIceServer[] = [
@@ -134,6 +134,7 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
         .then((offer) => pc.setLocalDescription(offer).then(() => offer))
         .then((offer) => {
           socket.current?.emit('webrtc-offer', { targetId: targetSocketId, offer, roomId: roomIdRef.current });
+          void capSenderBitrate(pc); // limita el bitrate de subida del video
         })
         .catch(() => {});
     }
@@ -178,12 +179,12 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
     setCallRoomId(roomId);
 
     try {
-      // Pedir acceso al micrófono (y cámara si withVideo), usando el dispositivo
-      // preferido elegido en Configuración → Audio y video (si lo hay).
-      const { micDeviceId, camDeviceId } = getSettings();
+      // Pedir micrófono (y cámara si withVideo) con constraints optimizadas para
+      // fluidez (audio con cancelación de eco/ruido, video acotado a 540p/30fps) y
+      // respetando el dispositivo elegido en Configuración → Audio y video.
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: micDeviceId ? { deviceId: { ideal: micDeviceId } } : true,
-        video: withVideo ? (camDeviceId ? { deviceId: { ideal: camDeviceId } } : true) : false,
+        audio: audioConstraints(),
+        video: withVideo ? videoConstraints() : false,
       });
       localStreamRef.current = stream;
       attachAnalyser('local', stream); // detección de habla propia (#7)
@@ -285,8 +286,7 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
       // Sin la renegociación (nueva oferta), el peer nunca recibe la pista nueva → la
       // cámara aparece "apagada" del otro lado aunque la tengamos encendida.
       try {
-        const { camDeviceId } = getSettings();
-        const videoStream = await navigator.mediaDevices.getUserMedia({ video: camDeviceId ? { deviceId: { ideal: camDeviceId } } : true });
+        const videoStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints() });
         const newTrack = videoStream.getVideoTracks()[0];
         stream.addTrack(newTrack);
         for (const [targetId, pc] of Object.entries(peerConnsRef.current)) {
@@ -295,6 +295,7 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             socket.current?.emit('webrtc-offer', { targetId, offer, roomId: roomIdRef.current });
+            void capSenderBitrate(pc); // topa el bitrate de subida del video nuevo
           } catch { /* la renegociación de este peer falló; los demás siguen */ }
         }
         setVideoOn(true);
@@ -329,6 +330,7 @@ export function useVoiceChat({ socket, socketInstance }: UseVoiceChatOptions) {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       s.emit('webrtc-answer', { targetId: from, answer });
+      void capSenderBitrate(pc); // limita el bitrate de subida de nuestro video
     };
 
     // Recibimos una respuesta a nuestra oferta

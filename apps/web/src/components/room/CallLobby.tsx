@@ -7,7 +7,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Video, VideoOff, Phone, ShieldAlert, Loader2, Camera } from 'lucide-react';
 import { Modal, Button } from '../ui';
-import { getSettings } from '../../store/useSettings';
+import { audioConstraints, videoConstraints } from '../../lib/mediaConstraints';
 import { mediaErrorMessage } from '../../lib/mediaErrors';
 
 type Phase = 'checking' | 'blocked' | 'denied' | 'error' | 'ready';
@@ -69,10 +69,9 @@ export default function CallLobby({ open, startWithVideo = false, username, onCl
     setPhase('checking'); setErrMsg('');
     stopStream();
     try {
-      const { micDeviceId, camDeviceId } = getSettings();
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: micDeviceId ? { deviceId: { ideal: micDeviceId } } : true,
-        video: withVideo ? (camDeviceId ? { deviceId: { ideal: camDeviceId } } : true) : false,
+        audio: audioConstraints(),
+        video: withVideo ? videoConstraints() : false,
       });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = withVideo ? stream : null;
