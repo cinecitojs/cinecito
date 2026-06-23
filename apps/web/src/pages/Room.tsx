@@ -30,6 +30,7 @@ import RoomThemeBackdrop from '../components/room/RoomThemeBackdrop';
 import { useSupporter } from '../hooks/useSupporter';
 import { ReactionsOverlay, ReactionBar, useFloatingReactions } from '../components/room/FloatingReactions';
 import OnboardingTour, { TOUR_SEEN_KEY } from '../components/room/OnboardingTour';
+import CountdownOverlay from '../components/room/CountdownOverlay';
 
 const DEFAULT_PERMS: RoomPermissions = {
   addVideo: 'host', removeVideo: 'host', skip: 'host', pauseResume: 'everyone', seek: 'everyone',
@@ -40,18 +41,29 @@ type MobileTab = 'video' | 'chat' | 'sala';
 // Video + capa de reacciones flotantes + barra de emojis. Definido a nivel de
 // módulo (identidad estable) para que VideoStage NO se remonte en cada render.
 function StageWithReactions({
-  stageProps, items, onReact, compactBar, hideBar,
+  stageProps, items, onReact, compactBar, hideBar, countdown, serverOffset, onCountdownDone,
 }: {
   stageProps: any;
   items: { id: number; emoji: string; left: number; drift: number; scale: number }[];
   onReact: (emoji: string) => void;
   compactBar?: boolean;
   hideBar?: boolean;
+  countdown?: { startAt: number; durationMs: number } | null;
+  serverOffset?: number;
+  onCountdownDone?: () => void;
 }) {
   return (
     <div className="relative">
       <VideoStage {...stageProps} />
       <ReactionsOverlay items={items} />
+      {countdown && (
+        <CountdownOverlay
+          startAt={countdown.startAt}
+          durationMs={countdown.durationMs}
+          serverOffset={serverOffset ?? 0}
+          onDone={onCountdownDone ?? (() => {})}
+        />
+      )}
       {/* Arriba a la derecha: no tapa la barra de controles del reproductor (abajo). */}
       {!hideBar && <ReactionBar onPick={onReact} compact={compactBar} className="absolute top-2 right-2 z-30" />}
     </div>
@@ -145,6 +157,11 @@ export default function Room() {
 
   // Reacciones flotantes efímeras (#8).
   const reactions = useFloatingReactions();
+
+  // Cuenta regresiva cinematográfica (3·2·1·play) sincronizada por el servidor.
+  const [countdown, setCountdown] = useState<{ startAt: number; durationMs: number } | null>(null);
+  const countdownRef = useRef(countdown);
+  countdownRef.current = countdown; // espejo para el listener de room-state
 
   // Mini tutorial de bienvenida (onboarding).
   const [tourOpen, setTourOpen] = useState(false);
@@ -329,7 +346,14 @@ export default function Room() {
           serverOffsetRef.current = off;
           setServerOffset(off);
         }
+        // Si llega un estado PAUSADO mientras hay cuenta regresiva activa, es una
+        // cancelación (el host pausó/cambió de video) → cortamos el conteo. El
+        // "hold" inicial llega ANTES del evento room-countdown, así que no la pisa.
+        if (!s.isPlaying && countdownRef.current) setCountdown(null);
       }),
+      // Cuenta regresiva cinematográfica sincronizada (3·2·1·play).
+      socket.on<{ startAt: number; durationMs: number }>('room-countdown',
+        ({ startAt, durationMs }) => setCountdown({ startAt, durationMs })),
       socket.on<{ userId: string }>('user-joined', ({ userId }) => {
         if (userId) setOnlineIds((p) => [...new Set([...p, userId])]);
         refetch();
@@ -524,6 +548,9 @@ export default function Room() {
     onSeek:  (t: number) => roomId && socket.videoSeek(roomId, t),
   };
 
+  // Props comunes de la cuenta regresiva para cada vista del VideoStage.
+  const stageExtra = { countdown, serverOffset, onCountdownDone: () => setCountdown(null) };
+
   const queueProps = {
     videos: room.videos || [],
     currentVideoId: session?.currentVideoId,
@@ -670,7 +697,7 @@ export default function Room() {
           <div className="flex-1 min-h-0 flex items-center justify-center p-3 overflow-hidden">
             {/* Acota el ancho para que el alto 16:9 entre completo en el área disponible */}
             <div className="w-full mx-auto" style={{ maxWidth: 'calc((100dvh - 6rem) * 16 / 9)' }}>
-              <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} />
+              <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} {...stageExtra} />
             </div>
           </div>
 
@@ -716,7 +743,7 @@ export default function Room() {
         <div className="flex-1 flex gap-4 p-4 min-h-0">
           {/* Columna principal: si el video + cola exceden el alto, scrollea ACÁ (no rompe el chat) */}
           <div className="flex-1 flex flex-col gap-4 min-w-0 min-h-0 overflow-y-auto">
-            <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} />
+            <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} {...stageExtra} />
             <VideoQueue {...queueProps} />
           </div>
           {/* Columna lateral: participantes + voz arriba (alto natural, sin que el
@@ -733,7 +760,7 @@ export default function Room() {
         <div className="flex-1 relative bg-black flex flex-col min-h-0">
           <div className="flex-1 min-h-0 flex items-center justify-center p-1 overflow-hidden">
             <div className="w-full mx-auto" style={{ maxWidth: 'min(100%, calc((100dvh - 6rem) * 16 / 9))' }}>
-              <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} hideBar />
+              <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} hideBar {...stageExtra} />
             </div>
           </div>
 
@@ -789,7 +816,7 @@ export default function Room() {
               {/* Acota el ANCHO del video para que su alto 16:9 entre completo en
                   cualquier orientación: full-width en vertical, letterbox en horizontal. */}
               <div className="mx-auto w-full" style={{ maxWidth: 'min(100%, calc((100dvh - 11rem) * 16 / 9))' }}>
-                <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} compactBar />
+                <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} compactBar {...stageExtra} />
               </div>
               <VideoQueue {...queueProps} />
             </div>

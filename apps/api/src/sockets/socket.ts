@@ -16,7 +16,7 @@ import { prisma } from '../lib/db';
 import { corsOrigins } from '../../config/env';
 import { isMemberOrOwner } from '../lib/acl';
 import { accountBlockReason } from '../lib/accountStatus';
-import { getRoomSession } from '../services/roomSession';
+import { getRoomSession, setRoomSession } from '../services/roomSession';
 import { applyVideoCommand } from '../services/videoSync';
 import {
   canDoVideoAction,
@@ -36,6 +36,20 @@ import {
 
 const MSG_LIMIT  = 5;
 const MSG_WINDOW = 3000;
+
+// ── Cuenta regresiva cinematográfica (3·2·1·play) ────────────
+// Al iniciar la reproducción (pausa→play) re-afirmamos PAUSA en el tiempo de
+// inicio (gatea a TODOS por el estado autoritativo, incluido el controlador) y
+// programamos el play real. La sincronía la da el reloj del servidor: el cliente
+// recibe `startAt` y todos cuentan 3·2·1 alineados. Timer por sala en memoria:
+// correcto en 1 instancia y compatible con el adaptador Redis (la instancia que
+// recibe el play agenda el timer y difunde el room-state por el adaptador).
+const COUNTDOWN_MS = 2600;
+const countdownTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function clearCountdown(roomId: string) {
+  const t = countdownTimers.get(roomId);
+  if (t) { clearTimeout(t); countdownTimers.delete(roomId); }
+}
 
 // ── Mensaje de sistema EFÍMERO (no se persiste en DB) ────────
 // join/leave/transfer son ruido: se transmiten en vivo pero no
@@ -456,6 +470,35 @@ export default fp(async function (fastify, _opts) {
           const err = { error: 'forbidden', message: 'No tenés permiso para esta acción' };
           return typeof ack === 'function' ? ack(err) : socket.emit('video-error', err);
         }
+
+        // Cualquier comando cancela una cuenta regresiva pendiente (pausar/seek/
+        // cambiar de video o un nuevo play reinician/cancelan el conteo anterior).
+        clearCountdown(roomId);
+
+        // Cuenta regresiva al INICIAR (transición pausa→play). Re-afirma pausa en
+        // el tiempo de inicio y programa el play real; el cliente muestra 3·2·1.
+        if (command.type === 'play') {
+          const existing = await getRoomSession(roomId);
+          const wasPaused = !existing?.isPlaying;
+          if (wasPaused) {
+            const seek = command.seekTime;
+            const held = await setRoomSession(roomId, {
+              isPlaying: false,
+              ...(seek !== undefined ? { currentTime: seek } : {}),
+            });
+            io.to(roomId).emit('room-state', { session: held, serverTime: Date.now() });
+            const startAt = Date.now() + COUNTDOWN_MS;
+            io.to(roomId).emit('room-countdown', { startAt, durationMs: COUNTDOWN_MS });
+            countdownTimers.set(roomId, setTimeout(() => {
+              countdownTimers.delete(roomId);
+              applyVideoCommand(fastify as any, roomId, { type: 'play', seekTime: seek })
+                .catch((err) => logger.error({ err }, 'countdown play failed'));
+            }, COUNTDOWN_MS));
+            if (typeof ack === 'function') ack({ ok: true, countdown: true, serverTime: Date.now() });
+            return;
+          }
+        }
+
         const session = await applyVideoCommand(fastify as any, roomId, command);
         if (typeof ack === 'function') ack({ ok: true, session, serverTime: Date.now() });
       } catch (err: any) {
