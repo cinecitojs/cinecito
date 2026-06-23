@@ -23,6 +23,13 @@ interface VideoStageProps {
   onPlay: (t: number) => void;
   onPause: (t: number) => void;
   onSeek: (t: number) => void;
+  /**
+   * Se llama en el PLAY del controlador (intención de iniciar). Si devuelve true,
+   * el contenedor ya mostró/disparó la cuenta regresiva → gateamos el reproductor
+   * localmente (pausa inmediata, sin emitir) para que el video NO arranque antes
+   * del 3·2·1 (elimina el flash play→stop). Si devuelve false, play normal.
+   */
+  onStartIntent?: (t: number) => boolean;
 }
 
 // Interfaz que cada adaptador expone al motor de sync.
@@ -37,7 +44,7 @@ interface Adapter {
 }
 
 export default function VideoStage({
-  video, session, serverOffset, isController, onPlay, onPause, onSeek,
+  video, session, serverOffset, isController, onPlay, onPause, onSeek, onStartIntent,
 }: VideoStageProps) {
   const hostRef    = useRef<HTMLDivElement>(null);
   const adapterRef = useRef<Adapter | null>(null);
@@ -59,6 +66,22 @@ export default function VideoStage({
     if (!isController) return;
     fn();
   }, [isController]);
+
+  // Play del controlador: si el contenedor pide cuenta regresiva (onStartIntent
+  // → true), gateamos el reproductor AHORA mismo (pausa local + suppress, sin
+  // emitir) para que el video no arranque antes del 3·2·1. El play real llega
+  // luego por el estado autoritativo (room-state) al terminar el conteo.
+  const handleLocalPlay = useCallback((time: number) => {
+    emitWhileControlling(() => {
+      if (onStartIntent && onStartIntent(time)) {
+        suppress.current = true;
+        try { adapterRef.current?.pause(); } catch { /* */ }
+        window.setTimeout(() => { suppress.current = false; }, 250);
+        return;
+      }
+      onPlay(time);
+    });
+  }, [emitWhileControlling, onPlay, onStartIntent]);
 
   // ── Crear / destruir el adaptador cuando cambia el video ──
   useEffect(() => {
@@ -93,7 +116,7 @@ export default function VideoStage({
 
       el.addEventListener('loadedmetadata', () => { if (!cancelled) setStatus('ready'); });
       el.addEventListener('error', () => fail('No se pudo cargar el video. El enlace puede ser inválido o estar protegido (CORS).'));
-      el.addEventListener('play',   () => emitWhileControlling(() => onPlay(el.currentTime)));
+      el.addEventListener('play',   () => handleLocalPlay(el.currentTime));
       el.addEventListener('pause',  () => emitWhileControlling(() => onPause(el.currentTime)));
       el.addEventListener('seeked', () => emitWhileControlling(() => onSeek(el.currentTime)));
 
@@ -135,7 +158,7 @@ export default function VideoStage({
             onStateChange: (e: any) => {
               const YT = w.YT.PlayerState;
               try { last = player.getCurrentTime(); } catch {}
-              if (e.data === YT.PLAYING) emitWhileControlling(() => onPlay(last));
+              if (e.data === YT.PLAYING) handleLocalPlay(last);
               else if (e.data === YT.PAUSED) emitWhileControlling(() => onPause(last));
             },
           },
@@ -184,7 +207,7 @@ export default function VideoStage({
         });
         let last = 0;
         player.on('timeupdate', (d: any) => { last = d.seconds; });
-        player.on('play',   () => emitWhileControlling(() => onPlay(last)));
+        player.on('play',   () => handleLocalPlay(last));
         player.on('pause',  () => emitWhileControlling(() => onPause(last)));
         player.on('seeked', (d: any) => emitWhileControlling(() => onSeek(d.seconds)));
         player.on('error',  () => fail('Vimeo no pudo reproducir este video.'));

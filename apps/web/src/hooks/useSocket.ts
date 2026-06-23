@@ -157,6 +157,11 @@ export function useSocket({ token, onConnect, onDisconnect, onError }: UseSocket
     socketRef.current?.emit('video-select', { roomId, videoId });
   }, []);
 
+  // Dispara la cuenta regresiva sincronizada (el controlador ya gateó su player).
+  const startCountdown = useCallback((roomId: string, seekTime: number, startAt: number, durationMs: number) => {
+    socketRef.current?.emit('video-countdown', { roomId, seekTime, startAt, durationMs });
+  }, []);
+
   const requestSync = useCallback((roomId: string): Promise<{ session: RoomSession | null; serverTime: number }> =>
     new Promise((resolve) => {
       if (!socketRef.current?.connected)
@@ -210,6 +215,7 @@ export function useSocket({ token, onConnect, onDisconnect, onError }: UseSocket
     videoPause,
     videoSeek,
     videoSelect,
+    startCountdown,
     requestSync,
     transferHost,
     updatePermissions,

@@ -36,6 +36,12 @@ const DEFAULT_PERMS: RoomPermissions = {
   addVideo: 'host', removeVideo: 'host', skip: 'host', pauseResume: 'everyone', seek: 'everyone',
 };
 
+// Cuenta regresiva cinematográfica: duración del 3·2·1 y cooldown tras una pausa.
+// Tras pausar, no se vuelve a mostrar el overlay hasta pasados 2 minutos (evita
+// que aparezca en cada reanudación rápida; solo "al iniciar" el video).
+const COUNTDOWN_MS = 2600;
+const COUNTDOWN_COOLDOWN_MS = 2 * 60 * 1000;
+
 type MobileTab = 'video' | 'chat' | 'sala';
 
 // Video + capa de reacciones flotantes + barra de emojis. Definido a nivel de
@@ -163,6 +169,48 @@ export default function Room() {
   const countdownRef = useRef(countdown);
   countdownRef.current = countdown; // espejo para el listener de room-state
 
+  // Cooldown del overlay: rastrea cuándo se pausó por última vez y el video actual.
+  // La cuenta regresiva solo se muestra "al iniciar": video nuevo / primer play, o
+  // si pasaron ≥2 min desde la última pausa. Refs → decisión instantánea y sin re-render.
+  const lastPauseAtRef = useRef<number | null>(null);
+  const wasPlayingRef  = useRef(false);
+  const lastVideoIdRef = useRef<string | null | undefined>(undefined);
+
+  // Procesa cada sesión nueva para el cooldown: detecta pausa (playing→paused) y
+  // cambio de video (reinicia el cooldown → permite cuenta regresiva en el nuevo).
+  const trackSessionForCountdown = useCallback((s: RoomSession | null) => {
+    if (!s) return;
+    if (lastVideoIdRef.current !== s.currentVideoId) {
+      lastVideoIdRef.current = s.currentVideoId ?? null;
+      lastPauseAtRef.current = null; // video nuevo → arranque "fresco"
+      wasPlayingRef.current = false;
+    }
+    if (wasPlayingRef.current && !s.isPlaying) lastPauseAtRef.current = Date.now();
+    wasPlayingRef.current = s.isPlaying;
+  }, []);
+
+  // ¿Mostrar la cuenta regresiva en este play? Solo "al iniciar": nunca se pausó
+  // (arranque fresco) o ya pasó el cooldown desde la última pausa.
+  const shouldCountdown = useCallback(() => {
+    const lp = lastPauseAtRef.current;
+    return lp == null || (Date.now() - lp) >= COUNTDOWN_COOLDOWN_MS;
+  }, []);
+
+  // Intención de play del controlador (la llama VideoStage). Si toca cuenta
+  // regresiva, mostramos el overlay YA (local, inmediato), avisamos al servidor
+  // para que lo difunda y agende el play autoritativo, y devolvemos true → el
+  // reproductor se gatea localmente (no arranca hasta el "play"). Si no, false →
+  // reanudación normal e instantánea (sin overlay).
+  const onStartIntent = useCallback((t: number) => {
+    if (!roomId || !shouldCountdown()) return false;
+    const startAt = Date.now() + serverOffsetRef.current + COUNTDOWN_MS; // epoch del servidor
+    setCountdown({ startAt, durationMs: COUNTDOWN_MS });
+    socket.startCountdown(roomId, t, startAt, COUNTDOWN_MS);
+    return true;
+    // socket.startCountdown es estable; evitamos re-crear esta fn por identidad del socket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, shouldCountdown]);
+
   // Mini tutorial de bienvenida (onboarding).
   const [tourOpen, setTourOpen] = useState(false);
   const tourCheckedRef = useRef(false);
@@ -258,6 +306,11 @@ export default function Room() {
   const applyJoinResult = useCallback((result: any) => {
     setMessages(result.messages || []);
     setSession(result.session);
+    // Inicializa el rastreo de cooldown SIN registrar una pausa: al entrar, el
+    // estado actual es el punto de partida (un primer play será "fresco").
+    lastVideoIdRef.current = result.session?.currentVideoId ?? null;
+    wasPlayingRef.current  = !!result.session?.isPlaying;
+    lastPauseAtRef.current = null;
     setOnlineIds(result.onlineUserIds || []);
     setIsHost(!!result.isHost);
     if (result.permissions) setPermissions(result.permissions);
@@ -341,6 +394,7 @@ export default function Room() {
         ({ messageId, reactions }) => setMessages((p) => p.map((m) => m.id === messageId ? { ...m, reactions } : m))),
       socket.on<{ session: RoomSession; serverTime: number }>('room-state', ({ session: s, serverTime }) => {
         setSession(s);
+        trackSessionForCountdown(s);
         if (typeof serverTime === 'number') {
           const off = serverTime - Date.now();
           serverOffsetRef.current = off;
@@ -544,8 +598,15 @@ export default function Room() {
   const stageProps = {
     video: currentVideo, session, serverOffset, isController: canControl,
     onPlay:  (t: number) => roomId && socket.videoPlay(roomId, t),
-    onPause: (t: number) => roomId && socket.videoPause(roomId, t),
+    onPause: (t: number) => {
+      // Registramos la pausa localmente (además del eco del servidor) para que el
+      // cooldown de 2 min sea robusto ante un pausa→play muy rápido del controlador.
+      lastPauseAtRef.current = Date.now();
+      wasPlayingRef.current = false;
+      return roomId && socket.videoPause(roomId, t);
+    },
     onSeek:  (t: number) => roomId && socket.videoSeek(roomId, t),
+    onStartIntent,
   };
 
   // Props comunes de la cuenta regresiva para cada vista del VideoStage.

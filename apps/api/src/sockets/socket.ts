@@ -16,7 +16,7 @@ import { prisma } from '../lib/db';
 import { corsOrigins } from '../../config/env';
 import { isMemberOrOwner } from '../lib/acl';
 import { accountBlockReason } from '../lib/accountStatus';
-import { getRoomSession, setRoomSession } from '../services/roomSession';
+import { getRoomSession } from '../services/roomSession';
 import { applyVideoCommand } from '../services/videoSync';
 import {
   canDoVideoAction,
@@ -471,33 +471,9 @@ export default fp(async function (fastify, _opts) {
           return typeof ack === 'function' ? ack(err) : socket.emit('video-error', err);
         }
 
-        // Cualquier comando cancela una cuenta regresiva pendiente (pausar/seek/
-        // cambiar de video o un nuevo play reinician/cancelan el conteo anterior).
+        // Cualquier comando (play/pausa/seek/select) cancela una cuenta regresiva
+        // pendiente: si el host pausa o salta durante el 3·2·1, no debe auto-arrancar.
         clearCountdown(roomId);
-
-        // Cuenta regresiva al INICIAR (transición pausa→play). Re-afirma pausa en
-        // el tiempo de inicio y programa el play real; el cliente muestra 3·2·1.
-        if (command.type === 'play') {
-          const existing = await getRoomSession(roomId);
-          const wasPaused = !existing?.isPlaying;
-          if (wasPaused) {
-            const seek = command.seekTime;
-            const held = await setRoomSession(roomId, {
-              isPlaying: false,
-              ...(seek !== undefined ? { currentTime: seek } : {}),
-            });
-            io.to(roomId).emit('room-state', { session: held, serverTime: Date.now() });
-            const startAt = Date.now() + COUNTDOWN_MS;
-            io.to(roomId).emit('room-countdown', { startAt, durationMs: COUNTDOWN_MS });
-            countdownTimers.set(roomId, setTimeout(() => {
-              countdownTimers.delete(roomId);
-              applyVideoCommand(fastify as any, roomId, { type: 'play', seekTime: seek })
-                .catch((err) => logger.error({ err }, 'countdown play failed'));
-            }, COUNTDOWN_MS));
-            if (typeof ack === 'function') ack({ ok: true, countdown: true, serverTime: Date.now() });
-            return;
-          }
-        }
 
         const session = await applyVideoCommand(fastify as any, roomId, command);
         if (typeof ack === 'function') ack({ ok: true, session, serverTime: Date.now() });
@@ -512,6 +488,42 @@ export default fp(async function (fastify, _opts) {
     socket.on('video-pause',  (d, ack) => handleVideoCommand('video-pause',  'pauseResume', d, ack, { type: 'pause',  seekTime: d?.seekTime }));
     socket.on('video-seek',   (d, ack) => handleVideoCommand('video-seek',   'seek',        d, ack, { type: 'seek',   seekTime: d?.seekTime }));
     socket.on('video-select', (d, ack) => handleVideoCommand('video-select', 'skip',        d, ack, { type: 'select', videoId: d?.videoId }));
+
+    // ── video-countdown: cuenta regresiva cinematográfica (3·2·1·play) ──
+    // La dispara el CONTROLADOR, que YA gateó su reproductor localmente (pausa sin
+    // emitir). El servidor NO re-pausa (la sala ya está en pausa): solo difunde el
+    // conteo a los demás y agenda el play autoritativo al terminar. Así el video
+    // nunca arranca antes del 3·2·1.
+    socket.on('video-countdown', async (data, ack) => {
+      try {
+        const { roomId, seekTime, startAt, durationMs } = (data as any) || {};
+        if (!roomId) return typeof ack === 'function' ? ack({ error: 'invalid_payload' }) : undefined;
+        if (!(await checkRate(`vid:${socket.id}`, 15, 2000))) {
+          return typeof ack === 'function' ? ack({ error: 'rate_limited' }) : undefined;
+        }
+        const allowed = await canDoVideoAction(roomId, userId ?? undefined, 'pauseResume', { inRoom: socket.rooms.has(roomId) });
+        if (!allowed) return typeof ack === 'function' ? ack({ error: 'forbidden' }) : undefined;
+
+        clearCountdown(roomId);
+        const dur = Math.min(6000, Math.max(800, Number(durationMs) || COUNTDOWN_MS));
+        // delay alineado al reloj del cliente (startAt en epoch del servidor), con clamp defensivo.
+        const delay = typeof startAt === 'number'
+          ? Math.min(8000, Math.max(300, startAt - Date.now()))
+          : COUNTDOWN_MS;
+        const effStartAt = Date.now() + delay;
+        // A los DEMÁS: el controlador ya muestra su overlay localmente (inmediato).
+        socket.to(roomId).emit('room-countdown', { startAt: effStartAt, durationMs: dur });
+        countdownTimers.set(roomId, setTimeout(() => {
+          countdownTimers.delete(roomId);
+          applyVideoCommand(fastify as any, roomId, { type: 'play', seekTime })
+            .catch((err) => logger.error({ err }, 'countdown play failed'));
+        }, delay));
+        if (typeof ack === 'function') ack({ ok: true, startAt: effStartAt, durationMs: dur });
+      } catch (err: any) {
+        logger.error({ err }, 'video-countdown failed');
+        if (typeof ack === 'function') ack({ error: 'internal' });
+      }
+    });
 
     // ── update-permissions (solo owner/controlador) ──────
     socket.on('update-permissions', async (data, ack) => {
