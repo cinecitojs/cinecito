@@ -39,16 +39,29 @@ services:
         value: "true"           # Render está detrás de proxy → IP real del cliente para el rate-limit
       - key: ADMIN_EMAILS
         value: cinecitojs@gmail.com
+      # ── Redis (estado de sala compartido / persistente) ─────
+      # Render inyecta la connection string interna del Key Value de abajo.
+      # Beneficio en UNA sola instancia: el estado de sincronización (roomSession),
+      # typing y rate-limit sobreviven a cada redeploy (antes vivían en memoria y se
+      # perdían al reiniciar). Habilita además el adaptador de Socket.IO.
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: cinecito-redis
+          property: connectionString
       # ── Opcionales: agregar en el panel si se usan ──────────
       # Apoyo voluntario / pagos:
       #   KOFI_VERIFICATION_TOKEN   (Ko-fi → More → Webhooks → Verification Token)
       #   STRIPE_WEBHOOK_SECRET / MP_WEBHOOK_SECRET
       # Subida de archivos (Cloudflare R2):
       #   R2_ENDPOINT / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET_NAME / R2_PUBLIC_URL
-      # Tiempo real multi-instancia (solo si numInstances > 1):
-      #   REDIS_URL
       # Observabilidad:
       #   SENTRY_DSN / METRICS_BEARER_TOKEN
+      #
+      # ⚠️ Escala horizontal (numInstances > 1): NO subir todavía. El estado de la
+      # videollamada (voiceRooms/voiceWaiting en webrtc/signaling.ts) vive en memoria
+      # del proceso y aún NO está en Redis → con 2+ instancias el cupo de 4 y la lista
+      # de espera quedarían inconsistentes. Mantener numInstances = 1 hasta migrarlo.
 
   # ── Frontend / Web (estático) ─────────────────────────────
   - type: web
@@ -78,3 +91,14 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false             # URL pública del API, ej. https://cinecito-api.onrender.com
+
+  # ── Redis / Key Value (estado de sala compartido y persistente) ──
+  # Solo accesible internamente (ipAllowList vacío) → la API se conecta por la URL
+  # interna que inyecta `fromService` arriba. allkeys-lru: si se llena, descarta lo
+  # más viejo en vez de rechazar escrituras (nuestras claves son chicas y con TTL).
+  - type: keyvalue
+    name: cinecito-redis
+    region: oregon              # misma región que la API para latencia interna baja
+    plan: free                  # 25 MB; suficiente para sesiones/typing/rate-limit
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []             # [] = sin acceso externo (solo servicios internos)
