@@ -1,20 +1,23 @@
 // apps/web/src/components/room/HostControlCenter.tsx
 // Centro de control de sala — panel premium deslizable (drawer derecho en desktop,
-// full-width en móvil). Organiza los controles REALES del anfitrión + la
-// personalización de ambiente (por dispositivo). No toca la lógica de tiempo real:
-// recibe handlers ya cableados desde Room.tsx.
+// full-width en móvil). Organiza los controles del anfitrión + personalización.
+// No toca la lógica de tiempo real: recibe handlers ya cableados desde Room.tsx.
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Sparkles, SlidersHorizontal, Crown, Users, PlayCircle, ShieldCheck,
-  Copy, Check, RotateCcw, CornerDownRight, Lock, Globe, Mail, Hammer, Info,
+  Copy, Check, RotateCcw, CornerDownRight, Lock, Globe, Mail, Info,
+  MessageSquare, Smile, VolumeX, Volume2, UserMinus, Trash2,
 } from 'lucide-react';
 import { ROOM_THEMES } from '../../lib/roomThemes';
 import { PermissionsPanel } from './index';
-import type { RoomPermissions } from '../../hooks/useSocket';
+import { Avatar } from '../ui';
+import type { RoomPermissions, RoomSettings } from '../../hooks/useSocket';
 
 type TabKey = 'resumen' | 'ambiente' | 'reproduccion' | 'permisos' | 'gente';
+
+interface Member { id: string; username: string; avatar?: string | null; isOwner: boolean; }
 
 interface Props {
   open: boolean;
@@ -29,9 +32,20 @@ interface Props {
   onSeekTo: (seconds: number) => void;
   permissions: RoomPermissions;
   onChangePermissions: (next: RoomPermissions) => void;
-  ambiance: string | null;
-  onAmbiance: (id: string | null) => void;
-  participantsSlot?: React.ReactNode;
+  // Ambiente
+  localAmbiance: string | null;
+  onLocalAmbiance: (id: string | null) => void;
+  roomSettings: RoomSettings;
+  onSetSettings: (patch: Partial<RoomSettings>) => void;
+  // Gente / moderación
+  members: Member[];
+  onlineIds: string[];
+  mutedIds: string[];
+  currentUserId?: string;
+  onKick: (uid: string, banMinutes?: number) => void;
+  onMute: (uid: string, muted: boolean) => void;
+  onTransfer: (uid: string) => void;
+  onClearChat: () => void;
   pendingRequests?: number;
   onOpenRequests?: () => void;
 }
@@ -44,11 +58,33 @@ const PRIVACY: Record<Props['privacy'], { label: string; icon: typeof Lock }> = 
 
 const SECTION = 'rounded-2xl bg-[var(--surface-2)] dark:bg-dark-surface2 p-4';
 
+// ── Switch propio (sin libs) ──
+function Toggle({ on, onChange, label, desc, icon: Icon }:
+  { on: boolean; onChange: (v: boolean) => void; label: string; desc: string; icon: typeof Crown }) {
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--surface-2)] dark:bg-dark-surface2">
+      <span className="grid place-items-center w-9 h-9 rounded-xl bg-primary/15 text-[var(--primary-dark)] dark:text-primary shrink-0">
+        <Icon className="w-4 h-4" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-sm leading-tight">{label}</p>
+        <p className="text-xs text-[var(--text-muted)]">{desc}</p>
+      </div>
+      <button role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)}
+        className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${on ? 'bg-primary' : 'bg-[var(--border)]'}`}>
+        <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+          style={{ transform: on ? 'translateX(20px)' : 'translateX(0)' }} />
+      </button>
+    </div>
+  );
+}
+
 export default function HostControlCenter(p: Props) {
   const [tab, setTab] = useState<TabKey>('resumen');
   const [copied, setCopied] = useState(false);
   const [mm, setMm] = useState('');
   const [ss, setSs] = useState('');
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const allTabs: { key: TabKey; label: string; icon: typeof Crown; host?: boolean }[] = [
     { key: 'resumen',      label: 'Resumen',   icon: Info },
@@ -71,6 +107,10 @@ export default function HostControlCenter(p: Props) {
     if (!Number.isFinite(secs) || secs < 0) return;
     p.onSeekTo(secs);
   };
+
+  // Ambiente: el host fija el tema COMPARTIDO; los demás eligen el suyo (local).
+  const selectedTheme = p.isHost ? p.roomSettings.theme : p.localAmbiance;
+  const pickAmbiance = (id: string | null) => (p.isHost ? p.onSetSettings({ theme: id }) : p.onLocalAmbiance(id));
 
   const ambiances = [
     { id: null as string | null, name: 'Ninguno', swatch: 'from-slate-200 to-slate-100 dark:from-slate-700 dark:to-slate-800' },
@@ -177,18 +217,18 @@ export default function HostControlCenter(p: Props) {
                 </>
               )}
 
-              {/* ── Ambiente (personalización por dispositivo) ── */}
+              {/* ── Ambiente + interacción ── */}
               {tab === 'ambiente' && (
                 <>
                   <div className="flex items-start gap-2 text-xs text-[var(--text-muted)] px-1 mb-1">
                     <Sparkles className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--primary-dark)] dark:text-primary" />
-                    Elegí la ambientación de la sala. Por ahora se aplica solo en tu pantalla.
+                    {p.isHost ? 'Elegí la ambientación de la sala. Se aplica para todos.' : 'Elegí tu ambientación. Se aplica solo en tu pantalla.'}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {ambiances.map((a) => {
-                      const active = p.ambiance === a.id || (!p.ambiance && a.id === null);
+                      const active = selectedTheme === a.id || (!selectedTheme && a.id === null);
                       return (
-                        <button key={a.id ?? 'none'} onClick={() => p.onAmbiance(a.id)}
+                        <button key={a.id ?? 'none'} onClick={() => pickAmbiance(a.id)}
                           className={`relative rounded-2xl overflow-hidden h-20 border-2 transition-all
                             ${active ? 'border-primary scale-[0.98]' : 'border-transparent hover:border-primary/40'}`}>
                           <span className={`absolute inset-0 bg-gradient-to-br ${a.swatch}`} />
@@ -199,6 +239,16 @@ export default function HostControlCenter(p: Props) {
                       );
                     })}
                   </div>
+
+                  {p.isHost && (
+                    <div className="space-y-2.5 pt-1">
+                      <p className="text-xs font-semibold text-[var(--text-muted)] px-1">Interacción de la sala</p>
+                      <Toggle icon={MessageSquare} label="Chat" desc="Permitir mensajes de todos."
+                        on={p.roomSettings.chatEnabled} onChange={(v) => p.onSetSettings({ chatEnabled: v })} />
+                      <Toggle icon={Smile} label="Reacciones" desc="Emojis flotantes sobre el video."
+                        on={p.roomSettings.reactionsEnabled} onChange={(v) => p.onSetSettings({ reactionsEnabled: v })} />
+                    </div>
+                  )}
                 </>
               )}
 
@@ -251,16 +301,55 @@ export default function HostControlCenter(p: Props) {
               {/* ── Gente y moderación (host) ── */}
               {tab === 'gente' && p.isHost && (
                 <>
-                  {p.participantsSlot}
-                  <div className="rounded-2xl border border-dashed border-[var(--border)] p-4">
-                    <p className="flex items-center gap-2 font-semibold text-sm mb-2">
-                      <Hammer className="w-4 h-4 text-[var(--text-muted)]" /> Moderación
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-marquee/20 text-amber-700 dark:text-marquee">Pronto</span>
-                    </p>
-                    <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                      Expulsar, silenciar y bloquear personas, fijar y borrar mensajes, y cerrar la sala
-                      llegan en la próxima actualización (necesitan soporte del servidor).
-                    </p>
+                  <div className="space-y-1.5">
+                    {p.members.map((m) => {
+                      const isMe = m.id === p.currentUserId;
+                      const online = p.onlineIds.includes(m.id);
+                      const muted = p.mutedIds.includes(m.id);
+                      return (
+                        <div key={m.id} className="flex items-center gap-2.5 p-2 rounded-2xl bg-[var(--surface-2)] dark:bg-dark-surface2">
+                          <Avatar name={m.username} size="sm" src={m.avatar} online={online} />
+                          <span className="text-sm font-semibold flex-1 truncate">
+                            {m.username}{isMe && <span className="text-[var(--text-muted)] font-normal"> (vos)</span>}
+                          </span>
+                          {m.isOwner && <Crown className="w-4 h-4 text-marquee shrink-0" aria-label="Dueño" />}
+                          {!isMe && !m.isOwner && (
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <button onClick={() => p.onMute(m.id, !muted)} title={muted ? 'Reactivar' : 'Silenciar'}
+                                className={`p-1.5 rounded-lg transition-colors ${muted ? 'text-amber-600 dark:text-marquee bg-marquee/15' : 'text-[var(--text-muted)] hover:bg-[var(--surface)] dark:hover:bg-dark-surface'}`}>
+                                {muted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                              </button>
+                              <button onClick={() => p.onTransfer(m.id)} title="Dar control"
+                                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--primary-dark)] dark:hover:text-primary hover:bg-[var(--surface)] dark:hover:bg-dark-surface transition-colors">
+                                <Crown className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => p.onKick(m.id, 10)} title="Expulsar (no puede volver por 10 min)"
+                                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--error)] hover:bg-[var(--error)]/10 transition-colors">
+                                <UserMinus className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="pt-1">
+                    {confirmClear ? (
+                      <div className="flex items-center gap-2 p-2 rounded-2xl bg-[var(--error)]/10 border border-[var(--error)]/30">
+                        <span className="text-xs font-semibold text-[var(--error)] flex-1">¿Borrar todo el chat?</span>
+                        <button onClick={() => { p.onClearChat(); setConfirmClear(false); }}
+                          className="px-3 py-1.5 rounded-lg bg-[var(--error)] text-white text-xs font-bold">Sí, limpiar</button>
+                        <button onClick={() => setConfirmClear(false)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-muted)]">No</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setConfirmClear(true)}
+                        className="w-full flex items-center gap-2.5 p-3 rounded-2xl text-left text-[var(--text-muted)] hover:text-[var(--error)] hover:bg-[var(--error)]/8 transition-colors">
+                        <Trash2 className="w-4 h-4 shrink-0" />
+                        <span className="text-sm font-semibold">Limpiar el chat para todos</span>
+                      </button>
+                    )}
                   </div>
                 </>
               )}

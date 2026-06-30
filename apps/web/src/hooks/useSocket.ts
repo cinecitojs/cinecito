@@ -29,6 +29,12 @@ export interface ChatMessage {
 
 export type RoomPermissions = Record<'addVideo' | 'removeVideo' | 'skip' | 'pauseResume' | 'seek', 'host' | 'everyone'>;
 
+export interface RoomSettings {
+  theme: string | null;
+  chatEnabled: boolean;
+  reactionsEnabled: boolean;
+}
+
 export interface JoinRoomResult {
   ok?: boolean;
   error?: string;
@@ -38,6 +44,8 @@ export interface JoinRoomResult {
   onlineUserIds: string[];
   isHost: boolean;
   permissions?: RoomPermissions;
+  settings?: RoomSettings;
+  muted?: boolean;
   serverTime?: number;
 }
 
@@ -184,6 +192,32 @@ export function useSocket({ token, onConnect, onDisconnect, onError }: UseSocket
       });
     }), []);
 
+  // ── Moderación / ajustes de sala (Fase 2) ────────────────
+  const kickUser = useCallback((roomId: string, targetUserId: string, banMinutes?: number): Promise<{ ok?: boolean; error?: string; message?: string }> =>
+    new Promise((resolve) => {
+      socketRef.current?.emit('kick-user', { roomId, targetUserId, banMinutes }, (r: any) => resolve(r || {}));
+    }), []);
+
+  const muteUser = useCallback((roomId: string, targetUserId: string, muted: boolean): Promise<{ ok?: boolean; mutedUserIds?: string[]; error?: string }> =>
+    new Promise((resolve) => {
+      socketRef.current?.emit('mute-user', { roomId, targetUserId, muted }, (r: any) => resolve(r || {}));
+    }), []);
+
+  const deleteMessage = useCallback((roomId: string, messageId: string): Promise<{ ok?: boolean; error?: string }> =>
+    new Promise((resolve) => {
+      socketRef.current?.emit('delete-message', { roomId, messageId }, (r: any) => resolve(r || {}));
+    }), []);
+
+  const clearChat = useCallback((roomId: string): Promise<{ ok?: boolean; error?: string }> =>
+    new Promise((resolve) => {
+      socketRef.current?.emit('clear-chat', { roomId }, (r: any) => resolve(r || {}));
+    }), []);
+
+  const setRoomSettings = useCallback((roomId: string, patch: Partial<RoomSettings>): Promise<{ ok?: boolean; settings?: RoomSettings; error?: string }> =>
+    new Promise((resolve) => {
+      socketRef.current?.emit('set-room-settings', { roomId, ...patch }, (r: any) => resolve(r || {}));
+    }), []);
+
   // ── Event listener helpers ────────────────────────────────
   const on = useCallback(<T = any>(event: string, handler: (data: T) => void) => {
     socketRef.current?.on(event, handler);
@@ -213,6 +247,11 @@ export function useSocket({ token, onConnect, onDisconnect, onError }: UseSocket
     requestSync,
     transferHost,
     updatePermissions,
+    kickUser,
+    muteUser,
+    deleteMessage,
+    clearChat,
+    setRoomSettings,
     on,
     off,
     isConnected: () => socketRef.current?.connected ?? false,

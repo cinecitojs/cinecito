@@ -4,7 +4,7 @@
 import React, {
   useState, useRef, useEffect, useCallback,
 } from 'react';
-import { Send, Loader2, ArrowDown, MessageSquare, SmilePlus, Flag } from 'lucide-react';
+import { Send, Loader2, ArrowDown, MessageSquare, SmilePlus, Flag, Trash2, BellOff } from 'lucide-react';
 import { messagesApi } from '../../lib/api';
 import { Avatar } from '../ui';
 import EmojiPicker from './EmojiPicker';
@@ -26,6 +26,12 @@ interface ChatPanelProps {
   onReportMessage?: (msg: ChatMessage) => void;
   /** Oculta el header interno (cuando el chat va dentro de un FloatingWidget que ya tiene su barra). */
   hideHeader?: boolean;
+  /** Chat bloqueado (silenciado o desactivado por el host): deshabilita el input. */
+  disabled?: boolean;
+  disabledReason?: string;
+  /** El usuario actual es host: puede borrar cualquier mensaje. */
+  canModerate?: boolean;
+  onDeleteMessage?: (id: string) => void;
 }
 
 const QUICK_REACTIONS = ['🔥', '❤️', '😂', '👍', '😮', '🎬'];
@@ -107,6 +113,10 @@ export default function ChatPanel({
   onReact,
   onReportMessage,
   hideHeader = false,
+  disabled = false,
+  disabledReason,
+  canModerate = false,
+  onDeleteMessage,
 }: ChatPanelProps) {
   const [input, setInput]         = useState('');
   const [reactingId, setReactingId] = useState<string | null>(null);
@@ -183,7 +193,7 @@ export default function ChatPanel({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const content = input.trim();
-    if (!content || sending) return;
+    if (!content || sending || disabled) return;
     setSending(true);
     setInput('');
     typingSend();
@@ -325,6 +335,13 @@ export default function ChatPanel({
                                 <Flag className="w-3.5 h-3.5" />
                               </button>
                             )}
+                            {canModerate && onDeleteMessage && (
+                              <button type="button" aria-label="Borrar mensaje" title="Borrar mensaje (host)"
+                                onClick={() => onDeleteMessage(msg.id)}
+                                className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[var(--text-muted)] opacity-0 group-hover/msg:opacity-60 hover:!opacity-100 hover:text-red-500 hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-all">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
 
                           {/* Fila rápida de reacciones */}
@@ -402,30 +419,39 @@ export default function ChatPanel({
         </button>
       )}
 
-      {/* ── Input ───────────────────────────────────────────── */}
-      <form onSubmit={handleSubmit} className="p-3 border-t border-[var(--border)] flex gap-1.5 items-center shrink-0">
-        <EmojiPicker onSelect={insertEmoji} />
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Escribí un mensaje…"
-          value={input}
-          onChange={handleInputChange}
-          maxLength={500}
-          className="flex-1 px-4 py-2.5 rounded-2xl border border-[var(--border)] bg-[var(--bg)] dark:bg-dark-surface2 text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all min-w-0"
-        />
-        <button
-          type="submit"
-          disabled={!input.trim() || sending}
-          aria-label="Enviar"
-          className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white hover:bg-primary-dark transition-all disabled:opacity-40 shrink-0 active:scale-90 glow-primary"
-        >
-          {sending
-            ? <Loader2 className="w-4 h-4 animate-spin" />
-            : <Send className="w-4 h-4" />
-          }
-        </button>
-      </form>
+      {/* ── Input (o aviso si está bloqueado) ───────────────── */}
+      {disabled ? (
+        <div className="p-3 border-t border-[var(--border)] shrink-0">
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[var(--surface-2)] dark:bg-dark-surface2 text-[var(--text-muted)] text-sm">
+            <BellOff className="w-4 h-4 shrink-0" />
+            <span className="truncate">{disabledReason || 'No podés escribir en este momento.'}</span>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="p-3 border-t border-[var(--border)] flex gap-1.5 items-center shrink-0">
+          <EmojiPicker onSelect={insertEmoji} />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Escribí un mensaje…"
+            value={input}
+            onChange={handleInputChange}
+            maxLength={500}
+            className="flex-1 px-4 py-2.5 rounded-2xl border border-[var(--border)] bg-[var(--bg)] dark:bg-dark-surface2 text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all min-w-0"
+          />
+          <button
+            type="submit"
+            disabled={!input.trim() || sending}
+            aria-label="Enviar"
+            className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white hover:bg-primary-dark transition-all disabled:opacity-40 shrink-0 active:scale-90 glow-primary"
+          >
+            {sending
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Send className="w-4 h-4" />
+            }
+          </button>
+        </form>
+      )}
     </div>
   );
 }

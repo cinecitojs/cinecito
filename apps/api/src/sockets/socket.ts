@@ -33,23 +33,12 @@ import { toggleReaction, attachReactions } from '../lib/reactionStore';
 import {
   createOrGetRequest, getRequest, setRequestStatus, listRequests, pendingCount,
 } from '../lib/joinRequestStore';
+import {
+  isMuted, setMuted, listMuted, isBanned, setBan, getRoomSettings, patchRoomSettings,
+} from '../lib/roomModerationStore';
 
 const MSG_LIMIT  = 5;
 const MSG_WINDOW = 3000;
-
-// ── Cuenta regresiva cinematográfica (3·2·1·play) ────────────
-// Al iniciar la reproducción (pausa→play) re-afirmamos PAUSA en el tiempo de
-// inicio (gatea a TODOS por el estado autoritativo, incluido el controlador) y
-// programamos el play real. La sincronía la da el reloj del servidor: el cliente
-// recibe `startAt` y todos cuentan 3·2·1 alineados. Timer por sala en memoria:
-// correcto en 1 instancia y compatible con el adaptador Redis (la instancia que
-// recibe el play agenda el timer y difunde el room-state por el adaptador).
-const COUNTDOWN_MS = 2600;
-const countdownTimers = new Map<string, ReturnType<typeof setTimeout>>();
-function clearCountdown(roomId: string) {
-  const t = countdownTimers.get(roomId);
-  if (t) { clearTimeout(t); countdownTimers.delete(roomId); }
-}
 
 // ── Mensaje de sistema EFÍMERO (no se persiste en DB) ────────
 // join/leave/transfer son ruido: se transmiten en vivo pero no
@@ -178,6 +167,13 @@ export default fp(async function (fastify, _opts) {
           }
         }
 
+        // Baneo temporal por el host: no puede reingresar hasta que expire.
+        const ban = isBanned(roomId, userId);
+        if (ban.banned) {
+          const err = { error: 'banned', message: 'El anfitrión te quitó de esta sala por un rato.', until: ban.until };
+          return typeof ack === 'function' ? ack(err) : socket.emit('join-error', err);
+        }
+
         // ¿Reingreso del mismo socket? evita anunciar "se unió" en reconexiones.
         const isRejoin = (socket as any).data.currentRoom === roomId;
         socket.join(roomId);
@@ -216,6 +212,8 @@ export default fp(async function (fastify, _opts) {
             onlineUserIds,
             isHost: hostStatus,
             permissions: control?.permissions ?? DEFAULT_PERMISSIONS,
+            settings: getRoomSettings(roomId),
+            muted: isMuted(roomId, userId),
             serverTime: Date.now(),
           });
         }
@@ -357,6 +355,17 @@ export default fp(async function (fastify, _opts) {
           }
         }
 
+        // Moderación: silenciado por el host.
+        if (isMuted(roomId, userId)) {
+          const err = { error: 'muted', message: 'Estás silenciado en esta sala.' };
+          return typeof ack === 'function' ? ack(err) : socket.emit('message-error', err);
+        }
+        // Chat desactivado por el host (el host sí puede seguir escribiendo).
+        if (!getRoomSettings(roomId).chatEnabled && !(await isController(roomId, userId ?? undefined))) {
+          const err = { error: 'chat_disabled', message: 'El anfitrión desactivó el chat.' };
+          return typeof ack === 'function' ? ack(err) : socket.emit('message-error', err);
+        }
+
         const saved = await prisma.message.create({
           data: { roomId, userId: userId || null, content: content.trim() },
           include: { user: { select: { id: true, username: true, avatar: true } } },
@@ -423,6 +432,7 @@ export default fp(async function (fastify, _opts) {
         const room = await prisma.room.findUnique({ where: { id: roomId } });
         if (!room) return;
         if (room.isPrivate && !(await isMemberOrOwner(roomId, userId))) return;
+        if (!getRoomSettings(roomId).reactionsEnabled) return; // el host desactivó las reacciones
         // Incluye al emisor (io.to) para que vea su propia reacción sincronizada.
         io.to(roomId).emit('room-reaction', { emoji, userId });
       } catch (err: any) {
@@ -471,10 +481,6 @@ export default fp(async function (fastify, _opts) {
           return typeof ack === 'function' ? ack(err) : socket.emit('video-error', err);
         }
 
-        // Cualquier comando (play/pausa/seek/select) cancela una cuenta regresiva
-        // pendiente: si el host pausa o salta durante el 3·2·1, no debe auto-arrancar.
-        clearCountdown(roomId);
-
         const session = await applyVideoCommand(fastify as any, roomId, command);
         if (typeof ack === 'function') ack({ ok: true, session, serverTime: Date.now() });
       } catch (err: any) {
@@ -488,42 +494,6 @@ export default fp(async function (fastify, _opts) {
     socket.on('video-pause',  (d, ack) => handleVideoCommand('video-pause',  'pauseResume', d, ack, { type: 'pause',  seekTime: d?.seekTime }));
     socket.on('video-seek',   (d, ack) => handleVideoCommand('video-seek',   'seek',        d, ack, { type: 'seek',   seekTime: d?.seekTime }));
     socket.on('video-select', (d, ack) => handleVideoCommand('video-select', 'skip',        d, ack, { type: 'select', videoId: d?.videoId }));
-
-    // ── video-countdown: cuenta regresiva cinematográfica (3·2·1·play) ──
-    // La dispara el CONTROLADOR, que YA gateó su reproductor localmente (pausa sin
-    // emitir). El servidor NO re-pausa (la sala ya está en pausa): solo difunde el
-    // conteo a los demás y agenda el play autoritativo al terminar. Así el video
-    // nunca arranca antes del 3·2·1.
-    socket.on('video-countdown', async (data, ack) => {
-      try {
-        const { roomId, seekTime, startAt, durationMs } = (data as any) || {};
-        if (!roomId) return typeof ack === 'function' ? ack({ error: 'invalid_payload' }) : undefined;
-        if (!(await checkRate(`vid:${socket.id}`, 15, 2000))) {
-          return typeof ack === 'function' ? ack({ error: 'rate_limited' }) : undefined;
-        }
-        const allowed = await canDoVideoAction(roomId, userId ?? undefined, 'pauseResume', { inRoom: socket.rooms.has(roomId) });
-        if (!allowed) return typeof ack === 'function' ? ack({ error: 'forbidden' }) : undefined;
-
-        clearCountdown(roomId);
-        const dur = Math.min(6000, Math.max(800, Number(durationMs) || COUNTDOWN_MS));
-        // delay alineado al reloj del cliente (startAt en epoch del servidor), con clamp defensivo.
-        const delay = typeof startAt === 'number'
-          ? Math.min(8000, Math.max(300, startAt - Date.now()))
-          : COUNTDOWN_MS;
-        const effStartAt = Date.now() + delay;
-        // A los DEMÁS: el controlador ya muestra su overlay localmente (inmediato).
-        socket.to(roomId).emit('room-countdown', { startAt: effStartAt, durationMs: dur });
-        countdownTimers.set(roomId, setTimeout(() => {
-          countdownTimers.delete(roomId);
-          applyVideoCommand(fastify as any, roomId, { type: 'play', seekTime })
-            .catch((err) => logger.error({ err }, 'countdown play failed'));
-        }, delay));
-        if (typeof ack === 'function') ack({ ok: true, startAt: effStartAt, durationMs: dur });
-      } catch (err: any) {
-        logger.error({ err }, 'video-countdown failed');
-        if (typeof ack === 'function') ack({ error: 'internal' });
-      }
-    });
 
     // ── update-permissions (solo owner/controlador) ──────
     socket.on('update-permissions', async (data, ack) => {
@@ -601,6 +571,107 @@ export default fp(async function (fastify, _opts) {
         logger.error({ err }, 'transfer-host failed');
         const e = { error: 'internal', message: 'Internal server error' };
         return typeof ack === 'function' ? ack(e) : socket.emit('transfer-host-error', e);
+      }
+    });
+
+    // ── kick-user (expulsar; con baneo temporal opcional) ─────
+    socket.on('kick-user', async (data, ack) => {
+      try {
+        const { roomId, targetUserId, banMinutes } = (data as any) || {};
+        if (!roomId || !targetUserId) return typeof ack === 'function' ? ack({ error: 'invalid' }) : undefined;
+        if (!(await isController(roomId, userId ?? undefined))) return typeof ack === 'function' ? ack({ error: 'forbidden' }) : undefined;
+        if (targetUserId === userId) return typeof ack === 'function' ? ack({ error: 'self', message: 'No podés expulsarte a vos.' }) : undefined;
+        const room = await prisma.room.findUnique({ where: { id: roomId }, select: { ownerId: true } });
+        if (room?.ownerId && room.ownerId === targetUserId) {
+          return typeof ack === 'function' ? ack({ error: 'cannot_kick_owner', message: 'No se puede expulsar al dueño de la sala.' }) : undefined;
+        }
+
+        const minutes = Math.min(Math.max(parseInt(banMinutes, 10) || 0, 0), 24 * 60);
+        const until = minutes > 0 ? setBan(roomId, targetUserId, minutes) : undefined;
+
+        const target = await prisma.user.findUnique({ where: { id: targetUserId }, select: { username: true } }).catch(() => null);
+        // Sacar de la sala a todos los sockets del usuario destino.
+        const socketsInRoom = await io.in(roomId).fetchSockets();
+        for (const s of socketsInRoom) {
+          if ((s as any).data?.userId === targetUserId) {
+            s.leave(roomId);
+            (s as any).data.currentRoom = null;
+          }
+        }
+        io.to('user:' + targetUserId).emit('kicked', { roomId, banned: minutes > 0, until });
+        io.to(roomId).emit('user-left', { socketId: null, userId: targetUserId });
+        emitSystem(io, roomId, `${getUsername()} sacó a ${target?.username || 'alguien'} de la sala`);
+        if (typeof ack === 'function') ack({ ok: true });
+      } catch (err: any) {
+        logger.error({ err }, 'kick-user failed');
+        if (typeof ack === 'function') ack({ error: 'internal' });
+      }
+    });
+
+    // ── mute-user (silenciar / dessilenciar en el chat) ───────
+    socket.on('mute-user', async (data, ack) => {
+      try {
+        const { roomId, targetUserId, muted } = (data as any) || {};
+        if (!roomId || !targetUserId) return typeof ack === 'function' ? ack({ error: 'invalid' }) : undefined;
+        if (!(await isController(roomId, userId ?? undefined))) return typeof ack === 'function' ? ack({ error: 'forbidden' }) : undefined;
+        if (targetUserId === userId) return typeof ack === 'function' ? ack({ error: 'self' }) : undefined;
+        setMuted(roomId, targetUserId, !!muted);
+        io.to('user:' + targetUserId).emit('you-muted', { roomId, muted: !!muted });
+        io.to(roomId).emit('user-muted', { userId: targetUserId, muted: !!muted, mutedUserIds: listMuted(roomId) });
+        if (typeof ack === 'function') ack({ ok: true, mutedUserIds: listMuted(roomId) });
+      } catch (err: any) {
+        logger.error({ err }, 'mute-user failed');
+        if (typeof ack === 'function') ack({ error: 'internal' });
+      }
+    });
+
+    // ── delete-message (borrar un mensaje) ────────────────────
+    socket.on('delete-message', async (data, ack) => {
+      try {
+        const { roomId, messageId } = (data as any) || {};
+        if (!roomId || !messageId) return typeof ack === 'function' ? ack({ error: 'invalid' }) : undefined;
+        if (!(await isController(roomId, userId ?? undefined))) return typeof ack === 'function' ? ack({ error: 'forbidden' }) : undefined;
+        await prisma.message.deleteMany({ where: { id: messageId, roomId } });
+        io.to(roomId).emit('message-deleted', { messageId });
+        if (typeof ack === 'function') ack({ ok: true });
+      } catch (err: any) {
+        logger.error({ err }, 'delete-message failed');
+        if (typeof ack === 'function') ack({ error: 'internal' });
+      }
+    });
+
+    // ── clear-chat (limpiar historial) ────────────────────────
+    socket.on('clear-chat', async (data, ack) => {
+      try {
+        const { roomId } = (data as any) || {};
+        if (!roomId) return typeof ack === 'function' ? ack({ error: 'invalid' }) : undefined;
+        if (!(await isController(roomId, userId ?? undefined))) return typeof ack === 'function' ? ack({ error: 'forbidden' }) : undefined;
+        await prisma.message.deleteMany({ where: { roomId } });
+        io.to(roomId).emit('chat-cleared', {});
+        emitSystem(io, roomId, `${getUsername()} limpió el chat`);
+        if (typeof ack === 'function') ack({ ok: true });
+      } catch (err: any) {
+        logger.error({ err }, 'clear-chat failed');
+        if (typeof ack === 'function') ack({ error: 'internal' });
+      }
+    });
+
+    // ── set-room-settings (tema compartido + toggles, solo host) ──
+    socket.on('set-room-settings', async (data, ack) => {
+      try {
+        const { roomId, theme, chatEnabled, reactionsEnabled } = (data as any) || {};
+        if (!roomId) return typeof ack === 'function' ? ack({ error: 'invalid' }) : undefined;
+        if (!(await isController(roomId, userId ?? undefined))) return typeof ack === 'function' ? ack({ error: 'forbidden' }) : undefined;
+        const patch: any = {};
+        if (theme !== undefined) patch.theme = theme;
+        if (chatEnabled !== undefined) patch.chatEnabled = chatEnabled;
+        if (reactionsEnabled !== undefined) patch.reactionsEnabled = reactionsEnabled;
+        const next = patchRoomSettings(roomId, patch);
+        io.to(roomId).emit('room-settings-updated', next);
+        if (typeof ack === 'function') ack({ ok: true, settings: next });
+      } catch (err: any) {
+        logger.error({ err }, 'set-room-settings failed');
+        if (typeof ack === 'function') ack({ error: 'internal' });
       }
     });
 

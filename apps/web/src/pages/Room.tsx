@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { roomsApi, messagesApi, uploadsApi } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
-import { useSocket, type ChatMessage, type RoomSession, type RoomPermissions } from '../hooks/useSocket';
+import { useSocket, type ChatMessage, type RoomSession, type RoomPermissions, type RoomSettings } from '../hooks/useSocket';
 import { parseVideoUrl } from '../lib/videoSources';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { Badge, Modal, Input, Button, Spinner, toast, ToastContainer } from '../components/ui';
@@ -76,6 +76,11 @@ export default function Room() {
   const [typingUserIds, setTypingIds] = useState<string[]>([]);
   const [isHost, setIsHost]           = useState(false);
   const [permissions, setPermissions] = useState<RoomPermissions>(DEFAULT_PERMS);
+
+  // ── Moderación / ajustes de sala (Fase 2) ──
+  const [roomSettings, setRoomSettings] = useState<RoomSettings>({ theme: null, chatEnabled: true, reactionsEnabled: true });
+  const [mutedIds, setMutedIds]         = useState<string[]>([]);
+  const [iAmMuted, setIAmMuted]         = useState(false);
   const [mobileTab, setMobileTab]     = useState<MobileTab>('video');
   const [unreadChat, setUnreadChat]   = useState(0);
 
@@ -257,6 +262,8 @@ export default function Room() {
     setOnlineIds(result.onlineUserIds || []);
     setIsHost(!!result.isHost);
     if (result.permissions) setPermissions(result.permissions);
+    if (result.settings) setRoomSettings(result.settings);
+    setIAmMuted(!!result.muted);
     if (typeof result.serverTime === 'number') {
       setServerOffset(result.serverTime - Date.now());
     }
@@ -375,6 +382,22 @@ export default function Room() {
         if (status === 'accepted') rejoin();
         else if (status === 'rejected') setAccessState('rejected');
       }),
+      // ── Moderación / ajustes (Fase 2) ──
+      socket.on('kicked', () => {
+        toast('El anfitrión te quitó de la sala', 'info');
+        navigate('/home');
+      }),
+      socket.on<{ muted: boolean }>('you-muted', ({ muted }) => {
+        setIAmMuted(!!muted);
+        toast(muted ? 'Un anfitrión te silenció en el chat' : 'Ya podés volver a escribir', muted ? 'info' : 'success');
+      }),
+      socket.on<{ mutedUserIds: string[] }>('user-muted', ({ mutedUserIds }) => {
+        if (Array.isArray(mutedUserIds)) setMutedIds(mutedUserIds);
+      }),
+      socket.on<{ messageId: string }>('message-deleted', ({ messageId }) =>
+        setMessages((p) => p.filter((m) => m.id !== messageId))),
+      socket.on('chat-cleared', () => setMessages([])),
+      socket.on<RoomSettings>('room-settings-updated', (s) => { if (s) setRoomSettings(s); }),
     ];
     return () => offs.forEach((off) => off());
   }, [roomId, mobileTab, user?.id]);
@@ -483,6 +506,18 @@ export default function Room() {
     onlineUsers.unshift({ id: room.owner.id, username: room.owner.username });
   }
 
+  // Miembros para el panel de moderación (deduplicados; el dueño primero).
+  const moderationMembers = (() => {
+    const raw = [
+      room?.owner && { id: room.owner.id, username: room.owner.username, avatar: room.owner.avatar, isOwner: true },
+      ...((room?.members || []).map((m: any) => ({
+        id: m.userId, username: m.user?.username || m.displayName, avatar: m.user?.avatar, isOwner: false,
+      }))),
+    ].filter(Boolean) as Array<{ id: string; username: string; avatar?: string | null; isOwner: boolean }>;
+    const seen = new Set<string>();
+    return raw.filter((m) => { if (!m.id || seen.has(m.id)) return false; seen.add(m.id); return true; });
+  })();
+
   // ¿Estoy en la lista de espera por un cupo activo? (hook ANTES de cualquier return
   // → respeta las Rules of Hooks). Ref espejo para usarlo en listeners del socket.
   const isWaiting = !!user?.id && voiceRoomState.waitingUserIds.includes(user.id);
@@ -583,11 +618,15 @@ export default function Room() {
         context: [roomId, (msg.content || '').slice(0, 140)].filter(Boolean).join(' · '),
         label: `el mensaje de ${msg.user?.username || 'un usuario'}`,
       }),
+    disabled: iAmMuted || (!roomSettings.chatEnabled && !isHost),
+    disabledReason: iAmMuted ? 'Estás silenciado en esta sala' : 'El anfitrión desactivó el chat',
+    canModerate: isHost,
+    onDeleteMessage: (id: string) => { if (roomId) socket.deleteMessage(roomId, id); },
   };
 
   return (
     <div className="relative h-[100dvh] overflow-hidden flex flex-col bg-[var(--bg)] dark:bg-dark-bg">
-      {(ambiance || activeTheme) && <RoomThemeBackdrop themeId={ambiance || activeTheme} />}
+      {(ambiance || roomSettings.theme || activeTheme) && <RoomThemeBackdrop themeId={ambiance || roomSettings.theme || activeTheme} />}
       <ToastContainer />
 
       <header className="shrink-0 h-14 border-b border-[var(--border)] bg-surface/90 dark:bg-dark-surface/90 backdrop-blur-sm flex items-center gap-3 px-4 sticky top-0 z-20">
@@ -864,9 +903,18 @@ export default function Room() {
         onSeekTo={(s) => { if (roomId) socket.videoSeek(roomId, s); }}
         permissions={permissions}
         onChangePermissions={savePermissions}
-        ambiance={ambiance}
-        onAmbiance={changeAmbiance}
-        participantsSlot={<ParticipantsPanel {...participantsProps} />}
+        localAmbiance={ambiance}
+        onLocalAmbiance={changeAmbiance}
+        roomSettings={roomSettings}
+        onSetSettings={(patch) => { if (roomId) socket.setRoomSettings(roomId, patch); }}
+        members={moderationMembers}
+        onlineIds={onlineIds}
+        mutedIds={mutedIds}
+        currentUserId={user?.id}
+        onKick={(uid, ban) => { if (roomId) socket.kickUser(roomId, uid, ban).then((r) => toast(r.error ? (r.message || 'No se pudo expulsar') : 'Listo', r.error ? 'error' : 'success')); }}
+        onMute={(uid, m) => { if (roomId) socket.muteUser(roomId, uid, m).then((r) => { if (r.mutedUserIds) setMutedIds(r.mutedUserIds); }); }}
+        onTransfer={participantsProps.onTransferHost}
+        onClearChat={() => { if (roomId) socket.clearChat(roomId).then((r) => toast(r.error ? 'No se pudo limpiar' : 'Chat limpio', r.error ? 'error' : 'info')); }}
         pendingRequests={pendingReqs}
         onOpenRequests={() => { setControlOpen(false); setShowRequests(true); }}
       />
