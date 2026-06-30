@@ -52,7 +52,7 @@ export function RequestAccessScreen({
           </>
         ) : (
           <>
-            <img src="/pochi-wink.png?v=20260622" alt="" className="w-28 h-auto mx-auto mb-3 select-none" draggable={false} />
+            <img src="/pocine-celebrate.png?v=20260622" alt="" className="w-28 h-auto mx-auto mb-3 select-none" draggable={false} />
             <h1 className="font-display font-bold text-xl mb-1">Sala solo por invitación</h1>
             <p className="text-sm text-[var(--text-muted)] mb-5">
               {roomName ? <><span className="font-semibold text-[var(--text)]">{roomName}</span> requiere </> : 'Esta sala requiere '}

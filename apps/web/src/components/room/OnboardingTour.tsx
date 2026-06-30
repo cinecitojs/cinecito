@@ -20,7 +20,7 @@ type Step = {
 
 const STEPS: Step[] = [
   {
-    icon: <img src="/pochi.png?v=20260622" alt="" className="w-20 h-20 object-contain" draggable={false} />,
+    icon: <img src="/pocine-hello.png?v=20260622" alt="" className="w-20 h-20 object-contain" draggable={false} />,
     title: '¡Bienvenido a Cinecito! 🍿',
     text: 'Mirá videos en sincronía con tus amigos, chateá y hacé videollamada. Te muestro lo básico en 20 segundos.',
   },

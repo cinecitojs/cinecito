@@ -1,22 +1,12 @@
-// apps/web/src/pages/Login.tsx  — FASE 4 (Etapa 3: reconstrucción del Login)
-// Solo capa visual/UX. Auth backend intacto (authApi.login). El campo de contraseña
-// con "ojo" se arma inline acá para no tocar el <Input/> compartido.
+// apps/web/src/pages/Login.tsx — Cielo compartido (auth backend intacto: authApi.login)
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import {
-  Mail, Lock, Eye, EyeOff, AlertCircle, ArrowLeft, UserRound,
-  Play, Video, MessageCircle,
-} from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowLeft, UserRound } from 'lucide-react';
 import { authApi } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { Button, Input, Modal, toast } from '../components/ui';
 import ThemeToggle from '../components/ui/ThemeToggle';
-
-const BRAND_POINTS = [
-  { icon: Play,          color: 'text-primary',     label: 'Reproducción en sincronía' },
-  { icon: Video,         color: 'text-purple-400',  label: 'Videollamada integrada' },
-  { icon: MessageCircle, color: 'text-pink-400',    label: 'Chat con reacciones' },
-];
+import CieloScene from '../components/layout/CieloScene';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -39,7 +29,7 @@ export default function Login() {
     try {
       const { data } = await authApi.login(form);
       setAuth(data.token, data.user);
-      toast('¡Bienvenido de vuelta! 🎬', 'success');
+      toast('Qué bueno verte de nuevo', 'success');
       navigate('/home');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Credenciales incorrectas');
@@ -47,58 +37,31 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* ── Panel de marca (desktop) ── */}
-      <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col items-center justify-center p-12
-                      bg-surface dark:bg-dark-surface border-r border-[var(--border)]">
-        <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-          <div className="absolute top-1/4 left-1/4 w-72 h-72 rounded-full bg-primary/10 blur-3xl" />
-          <div className="absolute bottom-1/4 right-1/4 w-56 h-56 rounded-full bg-secondary/10 blur-3xl" />
+    <div className="cielo-root relative min-h-[100dvh] flex flex-col items-center justify-center px-5 py-10 overflow-hidden">
+      <CieloScene />
+      <div className="absolute top-4 right-4 z-20"><ThemeToggle /></div>
+
+      <div className="relative z-10 w-full max-w-sm">
+        {/* Mascota sobre nube */}
+        <div className="relative flex items-end justify-center h-24 mb-1 z-10 pointer-events-none">
+          <div aria-hidden="true" className="absolute bottom-1 w-44 h-14 rounded-full bg-white/85 dark:bg-white/10 blur-lg" />
+          <img src="/pocine-hello.png?v=20260630" alt="Pociné saludando"
+            className="relative w-24 h-auto select-none animate-float motion-reduce:animate-none
+                       drop-shadow-[0_16px_28px_rgba(62,140,203,.25)]" draggable={false} />
         </div>
-        <img src="/pochi.png?v=20260622" alt="Pochi, la mascota de Cinecito"
-          className="relative w-64 h-auto mb-6 drop-shadow-2xl animate-float select-none" draggable={false} />
-        <Link to="/" className="relative font-cursive text-4xl text-primary mb-3">Cinecito</Link>
-        <p className="relative text-[var(--text-muted)] text-center max-w-xs leading-relaxed mb-8">
-          Tu cine privado para ver con la gente que más querés.
-        </p>
-        <div className="relative flex flex-col gap-3">
-          {BRAND_POINTS.map((p) => {
-            const Icon = p.icon;
-            return (
-              <span key={p.label} className="flex items-center gap-2.5 text-sm font-semibold">
-                <Icon className={`w-4 h-4 ${p.color}`} /> {p.label}
-              </span>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* ── Panel del formulario ── */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 relative">
-        <div className="absolute top-4 right-4"><ThemeToggle /></div>
-
-        <div className="w-full max-w-sm animate-scale-in">
-          {/* Logo mobile */}
-          <div className="lg:hidden text-center mb-8">
-            <img src="/pochi.png?v=20260622" alt="" className="w-28 h-auto mx-auto mb-2 select-none" draggable={false} />
-            <Link to="/" className="font-cursive text-3xl text-primary">Cinecito</Link>
-          </div>
-
-          <h1 className="font-display font-bold text-2xl sm:text-3xl mb-1">Iniciar sesión</h1>
-          <p className="text-sm text-[var(--text-muted)] mb-7">
+        <div className="cielo-panel rounded-[1.75rem] p-6 sm:p-7">
+          <h1 className="cielo-display font-bold text-2xl sm:text-[1.7rem] text-center">Qué bueno verte</h1>
+          <p className="text-sm text-[#54607a] dark:text-[#AEB6D0] text-center mt-1 mb-6">
             ¿No tenés cuenta?{' '}
-            <Link to="/register" className="text-primary font-semibold hover:underline">Registrate gratis</Link>
+            <Link to="/register" className="cielo-ink-sky font-bold hover:underline">Registrate gratis</Link>
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <Input
-              label="Email o usuario"
-              type="text" required
-              placeholder="tu@email.com o tu usuario"
-              autoComplete="username"
-              value={form.email}
-              onChange={update('email')}
-              disabled={loading}
+              label="Email o usuario" type="text" required
+              placeholder="tu@email.com o tu usuario" autoComplete="username"
+              value={form.email} onChange={update('email')} disabled={loading}
               icon={<Mail className="w-4 h-4" />}
               aria-describedby={error ? 'login-error' : undefined}
             />
@@ -108,27 +71,20 @@ export default function Login() {
               <div className="flex items-center justify-between">
                 <label htmlFor="login-password" className="text-sm font-semibold text-[var(--text)]">Contraseña</label>
                 <button type="button" onClick={() => setShowForgot(true)}
-                  className="text-xs text-primary hover:underline">
-                  ¿Olvidaste tu contraseña?
-                </button>
+                  className="text-xs cielo-ink-sky hover:underline">¿La olvidaste?</button>
               </div>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
                   <Lock className="w-4 h-4" />
                 </span>
                 <input
-                  id="login-password"
-                  type={showPass ? 'text' : 'password'} required
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  value={form.password}
-                  onChange={update('password')}
-                  disabled={loading}
+                  id="login-password" type={showPass ? 'text' : 'password'} required
+                  placeholder="••••••••" autoComplete="current-password"
+                  value={form.password} onChange={update('password')} disabled={loading}
                   aria-describedby={error ? 'login-error' : undefined}
                   className="w-full py-2.5 pl-10 pr-11 rounded-2xl border text-sm transition-all
                              bg-[var(--bg)] dark:bg-dark-surface2 border-[var(--border)]
-                             focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30
-                             disabled:opacity-50"
+                             focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
                 />
                 <button type="button" onClick={() => setShowPass((s) => !s)}
                   aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
@@ -140,7 +96,7 @@ export default function Login() {
 
             {error && (
               <div id="login-error" role="alert"
-                className="flex items-start gap-2 p-3 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm">
+                className="flex items-start gap-2 p-3 rounded-2xl bg-[var(--error)]/10 border border-[var(--error)]/30 text-[var(--error)] text-sm">
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -152,7 +108,6 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* Divisor */}
           <div className="flex items-center gap-3 my-5">
             <span className="flex-1 h-px bg-[var(--border)]" />
             <span className="text-xs text-[var(--text-muted)]">o</span>
@@ -162,22 +117,21 @@ export default function Login() {
           <Button variant="secondary" size="lg" className="w-full" onClick={() => navigate('/guest')}>
             <UserRound className="w-4 h-4" /> Entrar como invitado
           </Button>
-
-          <Link to="/"
-            className="flex items-center justify-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-primary mt-6 transition-colors">
-            <ArrowLeft className="w-3.5 h-3.5" /> Volver al inicio
-          </Link>
-
-          {/* Enlaces legales */}
-          <nav aria-label="Enlaces legales"
-            className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-6 pt-4 border-t border-[var(--border)] text-[11px] text-[var(--text-muted)]">
-            <Link to="/legal/terminos" className="hover:text-primary transition-colors">Términos</Link>
-            <span aria-hidden="true">·</span>
-            <Link to="/legal/privacidad" className="hover:text-primary transition-colors">Privacidad</Link>
-            <span aria-hidden="true">·</span>
-            <Link to="/legal/cookies" className="hover:text-primary transition-colors">Cookies</Link>
-          </nav>
         </div>
+
+        <Link to="/"
+          className="flex items-center justify-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-primary mt-5 transition-colors">
+          <ArrowLeft className="w-3.5 h-3.5" /> Volver al inicio
+        </Link>
+
+        <nav aria-label="Enlaces legales"
+          className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-4 text-[11px] text-[var(--text-muted)]">
+          <Link to="/legal/terminos" className="hover:text-primary transition-colors">Términos</Link>
+          <span aria-hidden="true">·</span>
+          <Link to="/legal/privacidad" className="hover:text-primary transition-colors">Privacidad</Link>
+          <span aria-hidden="true">·</span>
+          <Link to="/legal/cookies" className="hover:text-primary transition-colors">Cookies</Link>
+        </nav>
       </div>
 
       {/* ── Modal: olvidé contraseña (honesto) ── */}

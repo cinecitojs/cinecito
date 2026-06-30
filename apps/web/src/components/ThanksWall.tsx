@@ -30,7 +30,7 @@ export default function ThanksWall() {
   if (wall.length === 0) {
     return (
       <div className="rounded-3xl border-2 border-dashed border-[var(--border)] bg-surface/50 dark:bg-dark-surface/50 p-8 text-center">
-        <img src="/pochi-sleep.png?v=20260622" alt="Pochi esperando" className="w-28 h-auto mx-auto mb-3 select-none motion-reduce:animate-none" draggable={false} />
+        <img src="/pocine-empty.png?v=20260622" alt="Pociné esperando" className="w-28 h-auto mx-auto mb-3 select-none motion-reduce:animate-none" draggable={false} />
         <p className="font-display font-bold">Todavía no hay nombres acá… ¡todo listo para el primero! ✨</p>
         <p className="text-sm text-[var(--text-muted)] mt-1 max-w-md mx-auto">
           Si apoyás a Cinecito y querés, tu nombre aparece en este muro. Es opcional y puramente simbólico.

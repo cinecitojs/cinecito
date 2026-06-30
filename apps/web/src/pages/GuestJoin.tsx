@@ -1,13 +1,13 @@
-// apps/web/src/pages/GuestJoin.tsx  — FASE 5
-// Entrar como invitado (sin cuenta) usando un código de sala
-
+// apps/web/src/pages/GuestJoin.tsx — Cielo compartido
+// Entrar como invitado (sin cuenta) usando un código de sala. Lógica intacta.
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { User, Key, Loader2, ArrowLeft } from 'lucide-react';
+import { User, Key, ArrowLeft } from 'lucide-react';
 import { authApi, roomsApi } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { Button, Input, toast } from '../components/ui';
 import ThemeToggle from '../components/ui/ThemeToggle';
+import CieloScene from '../components/layout/CieloScene';
 
 export default function GuestJoin() {
   const navigate  = useNavigate();
@@ -45,41 +45,36 @@ export default function GuestJoin() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 relative">
-      <div className="absolute top-4 right-4"><ThemeToggle /></div>
-
-      <Link to="/" className="absolute top-4 left-4 flex items-center gap-2 text-[var(--text-muted)] hover:text-primary transition-colors text-sm font-medium">
+    <div className="cielo-root relative min-h-[100dvh] flex flex-col items-center justify-center px-5 overflow-hidden">
+      <CieloScene />
+      <div className="absolute top-4 right-4 z-20"><ThemeToggle /></div>
+      <Link to="/" className="absolute top-4 left-4 z-20 flex items-center gap-1.5 text-sm font-semibold text-[var(--text-muted)] hover:text-primary transition-colors">
         <ArrowLeft className="w-4 h-4" /> Inicio
       </Link>
 
-      <div className="w-full max-w-sm animate-scale-in">
-        <div className="text-center mb-8">
-          <img src="/pochi.png?v=20260622" alt="" className="w-32 h-auto mx-auto mb-2" />
-          <h1 className="font-cursive text-3xl text-primary mb-1">Entrar como invitado</h1>
-          <p className="text-[var(--text-muted)] text-sm">Sin cuenta, sin registro. Solo tu nombre.</p>
+      <div className="relative z-10 w-full max-w-sm">
+        {/* Mascota sobre nube */}
+        <div className="relative flex items-end justify-center h-24 mb-1 z-10 pointer-events-none">
+          <div aria-hidden="true" className="absolute bottom-1 w-44 h-14 rounded-full bg-white/85 dark:bg-white/10 blur-lg" />
+          <img src="/pocine-hello.png?v=20260630" alt="Pociné saludando"
+            className="relative w-24 h-auto select-none animate-float motion-reduce:animate-none
+                       drop-shadow-[0_16px_28px_rgba(62,140,203,.25)]" draggable={false} />
         </div>
 
-        <div className="bg-surface dark:bg-dark-surface rounded-3xl p-8 shadow-cine border border-[var(--border)]">
-          <form onSubmit={handleJoin} className="space-y-4">
-            <Input
-              label="Tu nombre"
-              placeholder="¿Cómo te llamás?"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              icon={<User className="w-4 h-4" />}
-              maxLength={30}
-            />
-            <Input
-              label="Código de sala"
-              placeholder="ABC123"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              icon={<Key className="w-4 h-4" />}
-              maxLength={6}
-              className="font-mono tracking-widest uppercase"
-            />
+        <div className="cielo-panel rounded-[1.75rem] p-6 sm:p-7">
+          <h1 className="cielo-display font-bold text-2xl text-center">Entrá como invitado</h1>
+          <p className="text-sm text-[#54607a] dark:text-[#AEB6D0] text-center mt-1 mb-6">Sin cuenta, sin registro. Solo tu nombre.</p>
 
-            {error && <p className="text-red-500 text-sm">{error}</p>}
+          <form onSubmit={handleJoin} className="space-y-4">
+            <Input label="Tu nombre" placeholder="¿Cómo te llamás?"
+              value={name} onChange={(e) => setName(e.target.value)}
+              icon={<User className="w-4 h-4" />} maxLength={30} />
+            <Input label="Código de sala" placeholder="ABC123"
+              value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+              icon={<Key className="w-4 h-4" />} maxLength={6}
+              className="font-mono tracking-widest uppercase" />
+
+            {error && <p className="text-[var(--error)] text-sm">{error}</p>}
 
             <Button type="submit" loading={loading} className="w-full" size="lg">
               Entrar a la sala
@@ -88,9 +83,7 @@ export default function GuestJoin() {
 
           <p className="text-center text-xs text-[var(--text-muted)] mt-5">
             ¿Querés guardar tus salas?{' '}
-            <Link to="/register" className="text-primary font-semibold hover:underline">
-              Creá una cuenta
-            </Link>
+            <Link to="/register" className="cielo-ink-sky font-bold hover:underline">Creá una cuenta</Link>
           </p>
         </div>
       </div>

@@ -1,11 +1,13 @@
 /* ============================================================
    apps/web/src/styles/index.css
-   Identidad Cinecito — "cine de noche": celeste neón, rosa Pochi,
-   lavanda, ámbar de marquesina. Dark = sala de proyección (sin negro puro).
-   Tipografía: Fredoka (display) + Nunito (cuerpo) + Pacifico (wordmark).
+   Identidad Cinecito — mundo de Pociné: periwinkle/lavanda soñador, crema,
+   blush y manteca. Dark = "modo función" (noche periwinkle suave).
+   Tipografía: Zen Maru Gothic (display) + Zen Kaku Gothic New (cuerpo) + Pacifico (wordmark).
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Fredoka:wght@400;500;600;700&family=Pacifico&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700;900&family=Pacifico&display=swap');
+/* "Cielo compartido" — identidad del nuevo Landing (scope .cielo-root). No afecta al resto de la app. */
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -15,58 +17,73 @@
 :root {
   --radius: 1.25rem;
 
-  /* Light mode — lienzo crema-celeste (mantiene personalidad) */
-  --bg:         #F2F8FF;
+  /* Mundo de Pociné (light) — periwinkle-crema soñador, mucho aire */
+  --bg:         #F1F2FC;
   --surface:    #FFFFFF;
-  --surface-2:  #E9F3FC;
-  --border:     #D6E7F5;
-  --text:       #122036;
-  --text-muted: #6A7C95;
+  --surface-2:  #E8EAFB;
+  --border:     #DCE0F4;
+  --text:       #2E3358;
+  --text-muted: #686E8C;
 
-  /* Brand (gira alrededor de Pochi) — primary fijo = match con Tailwind */
-  --primary:          #6ECBF5;
-  --primary-dark:     #1D6FA8;
+  /* `primary` (periwinkle de Pociné) para tintes/acentos; `primary-dark`
+     para CTAs sólidos y texto sobre tintes (contraste AA). */
+  --primary:          #6FB1E0;
+  --primary-dark:     #2E78B6;
   --primary-fg:       #FFFFFF;
-  --secondary:        #FF8FB0;
-  --secondary-fg:     #5A1430;
-  --accent:           #C9B6FF;
-  --accent-fg:        #3C2F73;
-  --marquee:          #FFB845;
+  --secondary:        #C0AEE8;
+  --secondary-fg:     #4A3A78;
+  --accent:           #F4B0C9;
+  --accent-fg:        #8A3357;
+  --marquee:          #E3B45C;
 
-  /* Semánticos */
-  --success: #34C77B;
-  --warning: #FFB845;
-  --error:   #FB6F73;
-  --online:  #34C77B;
+  /* Semánticos (pastel pero legibles) */
+  --success: #4FBE94;
+  --warning: #E0A24A;
+  --error:   #E5727E;
+  --online:  #4FBE94;
 
   --glow: 0 0 0 transparent;
-  --font-display: 'Fredoka', 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fredoka', 'Zen Maru Gothic', ui-sans-serif, system-ui, sans-serif;
+
+  /* Sombras delicadas tintadas a periwinkle (profundidad ligera). */
+  --shadow-sm: 0 1px 2px rgba(70,76,140,.05), 0 3px 10px rgba(70,76,140,.06);
+  --shadow-md: 0 4px 14px rgba(70,76,140,.09), 0 2px 6px rgba(70,76,140,.05);
+  --shadow-lg: 0 16px 44px rgba(70,76,140,.13), 0 6px 16px rgba(70,76,140,.07);
+
+  /* Curvas de easing (Emil): exponenciales, sin rebote. */
+  --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 .dark {
-  /* Sala de proyección: azul noche profundo, superficies elevadas, nunca negro */
-  --bg:         #0E1726;
-  --surface:    #16203A;
-  --surface-2:  #1E2B49;
-  --border:     #2C3C60;
-  --text:       #E6EDF7;
-  --text-muted: #93A3BE;
+  /* Mundo de Pociné (dark) — "modo función": noche periwinkle suave */
+  --bg:         #181A2E;
+  --surface:    #20233E;
+  --surface-2:  #2A2E4C;
+  --border:     #393E62;
+  --text:       #E9EAF6;
+  --text-muted: #A0A5C4;
 
-  --primary:      #6ECBF5;
-  --primary-dark: #2A85C4;
+  --primary:      #8FC2EA;
+  --primary-dark: #5C9BD0;
   --primary-fg:   #FFFFFF;
-  --secondary:    #FF9CBC;
-  --secondary-fg: #4B1528;
-  --accent:       #C9B6FF;
-  --accent-fg:    #EEEAFE;
-  --marquee:      #FFC56E;
+  --secondary:    #C9BAEF;
+  --secondary-fg: #ECE7FC;
+  --accent:       #F4B8CE;
+  --accent-fg:    #FCE6EE;
+  --marquee:      #F0C277;
 
-  --success: #4CD08A;
-  --warning: #FFC56E;
-  --error:   #FB6F73;
-  --online:  #4CD08A;
+  --success: #5FCF9E;
+  --warning: #F0C277;
+  --error:   #F0807F;
+  --online:  #5FCF9E;
 
-  --glow: 0 0 24px rgba(110, 203, 245, 0.35);
+  --glow: 0 0 24px rgba(153, 162, 238, 0.30);
+
+  /* En twilight las sombras se apoyan en negro suave. */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.3), 0 3px 10px rgba(0,0,0,.3);
+  --shadow-md: 0 6px 18px rgba(0,0,0,.36), 0 2px 6px rgba(0,0,0,.3);
+  --shadow-lg: 0 18px 46px rgba(0,0,0,.5), 0 6px 16px rgba(0,0,0,.4);
 }
 
 /* ── Base ───────────────────────────────────────────────── */
@@ -75,7 +92,7 @@
 html, body, #root { height: 100%; }
 
 body {
-  font-family: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Nunito', 'Zen Kaku Gothic New', ui-sans-serif, system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -83,7 +100,7 @@ body {
 }
 
 /* Títulos con la display cute-cinematográfica */
-h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0.01em; }
+h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0.02em; text-wrap: balance; }
 .font-cursive { font-family: 'Pacifico', cursive; }
 
 /* ── Scrollbar ──────────────────────────────────────────── */
@@ -137,7 +154,7 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .animate-float-slow   { animation: float-slow 4s ease-in-out infinite; }
 .animate-slide-up     { animation: slide-up 0.4s ease-out both; }
 .animate-slide-right  { animation: slide-in-right 0.3s ease-out both; }
-.animate-scale-in     { animation: scale-in 0.25s cubic-bezier(0.34,1.56,0.64,1) both; }
+.animate-scale-in     { animation: scale-in 0.2s var(--ease-out) both; }
 .animate-fade-in      { animation: fade-in 0.3s ease-out both; }
 .animate-msg-in       { animation: msg-in 0.28s cubic-bezier(0.22,1,0.36,1) both; }
 .animate-shimmer {
@@ -145,6 +162,29 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite linear;
 }
+
+/* ── Pociné: respiración en reposo + puntos de carga ── */
+@keyframes pocine-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+.animate-pocine-float { animation: pocine-float 5.5s ease-in-out infinite; }
+@keyframes pocine-dot  { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+.animate-pocine-dot   { animation: pocine-dot 1s ease-in-out infinite; }
+
+/* ── Atmósfera: una sola "luz de proyector" contenida detrás del shell ── */
+.app-ambient { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.app-ambient::before {
+  content: ''; position: absolute; top: -24%; left: 50%; transform: translateX(-50%);
+  width: 80rem; height: 46rem;
+  background: radial-gradient(58% 58% at 50% 0%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 72%);
+  opacity: .7;
+}
+.app-ambient::after {
+  content: ''; position: absolute; bottom: -30%; right: -10%;
+  width: 46rem; height: 46rem; border-radius: 9999px;
+  background: radial-gradient(50% 50% at 50% 50%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%);
+  opacity: .6;
+}
+.dark .app-ambient::before { opacity: .42; }
+.dark .app-ambient::after  { opacity: .32; }
 
 /* Respetar a quien prefiere menos movimiento (OS) */
 @media (prefers-reduced-motion: reduce) {
@@ -248,3 +288,101 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .theme-twinkle  { animation: twinkle 2.4s ease-in-out infinite; }
 .theme-popcorn  { animation: popcorn-fall linear infinite; }
 .theme-neon     { animation: neon-flicker 3s ease-in-out infinite; }
+
+/* ============================================================
+   "Cielo compartido" — sistema visual del Landing nuevo
+   Cielo continuo del amanecer al atardecer, nubes, estrellas, glass propio.
+   Todo vive bajo .cielo-root para no tocar el resto de la app.
+   ============================================================ */
+.cielo-root { font-family: 'Nunito', ui-sans-serif, system-ui, sans-serif; color: #33365A; }
+.dark .cielo-root { color: #E9EAF6; }
+.cielo-display { font-family: 'Fredoka', 'Nunito', ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.015em; }
+
+/* Cielo de fondo, fijo, continuo (amanecer arriba → atardecer abajo) */
+.cielo-sky {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background:
+    radial-gradient(70% 42% at 50% -2%, rgba(245,236,201,.38) 0%, transparent 60%),   /* mantequilla, susurro */
+    radial-gradient(62% 46% at 85% 12%, rgba(196,226,245,.60) 0%, transparent 60%),    /* azul hielo */
+    radial-gradient(56% 42% at 10% 32%, rgba(224,231,250,.50) 0%, transparent 60%),    /* lavanda suave */
+    linear-gradient(180deg, #FCFAF4 0%, #EFF6FC 30%, #E2EEF8 58%, #EAEFFA 82%, #F3F1FB 100%);
+}
+.dark .cielo-sky {
+  background:
+    radial-gradient(70% 42% at 50% -2%, rgba(126,176,228,.26) 0%, transparent 60%),
+    radial-gradient(56% 42% at 84% 12%, rgba(170,182,235,.16) 0%, transparent 60%),
+    linear-gradient(180deg, #131527 0%, #181A2E 30%, #1C2138 56%, #20243F 80%, #181A2E 100%);
+}
+
+/* Nubes suaves que respiran/derivan */
+.cielo-cloud { position: absolute; border-radius: 9999px; background: rgba(255,255,255,.62); filter: blur(30px); }
+.dark .cielo-cloud { background: rgba(150,162,225,.10); }
+@keyframes cielo-drift { 0%,100% { transform: translateX(-3%); } 50% { transform: translateX(3%); } }
+.cielo-drift  { animation: cielo-drift 16s ease-in-out infinite; }
+.cielo-drift2 { animation: cielo-drift 22s ease-in-out infinite reverse; }
+
+/* Estrellas: parpadeo lento */
+@keyframes cielo-star { 0%,100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+.cielo-star { animation: cielo-star 3.2s ease-in-out infinite; }
+
+/* Glass propio de Cinecito (no shadcn): borde de luz + reflejo interno */
+.cielo-glass {
+  background: rgba(255,255,255,.55);
+  backdrop-filter: blur(22px) saturate(135%);
+  -webkit-backdrop-filter: blur(22px) saturate(135%);
+  border: 1px solid rgba(255,255,255,.72);
+  box-shadow: 0 24px 70px rgba(86,80,150,.16), inset 0 1px 0 rgba(255,255,255,.85);
+}
+.dark .cielo-glass {
+  background: rgba(34,37,66,.55);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 24px 70px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
+}
+.cielo-glass-soft {
+  background: rgba(255,255,255,.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,.6);
+}
+.dark .cielo-glass-soft {
+  background: rgba(34,37,66,.45);
+  border: 1px solid rgba(255,255,255,.08);
+}
+/* Panel translúcido SIN backdrop-filter: mismo aire, costo GPU mínimo.
+   Para las tarjetas que se repiten (recorrido, dudas, footer). */
+.cielo-panel {
+  background: rgba(255,255,255,.72);
+  border: 1px solid rgba(255,255,255,.9);
+  box-shadow: 0 18px 50px rgba(86,80,150,.13), inset 0 1px 0 rgba(255,255,255,.9);
+}
+.dark .cielo-panel {
+  background: rgba(34,37,66,.72);
+  border: 1px solid rgba(255,255,255,.09);
+  box-shadow: 0 18px 50px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.07);
+}
+/* Cursor parpadeante (CSS, no JS) */
+@keyframes cielo-caret { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+.cielo-caret { animation: cielo-caret 1.1s step-end infinite; }
+/* Latido suave para el dot de la línea de tiempo (compositor) */
+@keyframes cielo-beat { 0%,100% { transform: translateY(-50%) scale(1); } 50% { transform: translateY(-50%) scale(1.18); } }
+.cielo-beat { animation: cielo-beat 2s ease-in-out infinite; }
+@media (prefers-reduced-transparency: reduce) {
+  .cielo-glass, .cielo-glass-soft { background: rgba(255,255,255,.95); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .dark .cielo-glass, .dark .cielo-glass-soft { background: rgba(34,37,66,.96); }
+}
+
+/* Botón primario celeste: azul cielo profundo→celeste, texto blanco AA en tamaño grande/bold */
+.cielo-cta {
+  background: linear-gradient(135deg, #3E8CCB 0%, #5FA6DD 100%);
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(62,140,203,.36), inset 0 1px 0 rgba(255,255,255,.4);
+}
+.cielo-cta:hover { box-shadow: 0 16px 38px rgba(62,140,203,.48), inset 0 1px 0 rgba(255,255,255,.45); }
+
+/* Color de acción para texto/iconos (celeste profundo, AA sobre claro) */
+.cielo-ink-sky { color: #2E78B6; }
+.dark .cielo-ink-sky { color: #8FC2EA; }
+
+/* Subrayado suave (azul hielo) para palabra destacada del titular */
+.cielo-underline { background: linear-gradient(180deg, transparent 62%, rgba(150,202,236,.60) 62%); }
+.dark .cielo-underline { background: linear-gradient(180deg, transparent 62%, rgba(150,202,236,.28) 62%); }

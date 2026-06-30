@@ -23,13 +23,6 @@ interface VideoStageProps {
   onPlay: (t: number) => void;
   onPause: (t: number) => void;
   onSeek: (t: number) => void;
-  /**
-   * Se llama en el PLAY del controlador (intención de iniciar). Si devuelve true,
-   * el contenedor ya mostró/disparó la cuenta regresiva → gateamos el reproductor
-   * localmente (pausa inmediata, sin emitir) para que el video NO arranque antes
-   * del 3·2·1 (elimina el flash play→stop). Si devuelve false, play normal.
-   */
-  onStartIntent?: (t: number) => boolean;
 }
 
 // Interfaz que cada adaptador expone al motor de sync.
@@ -44,7 +37,7 @@ interface Adapter {
 }
 
 export default function VideoStage({
-  video, session, serverOffset, isController, onPlay, onPause, onSeek, onStartIntent,
+  video, session, serverOffset, isController, onPlay, onPause, onSeek,
 }: VideoStageProps) {
   const hostRef    = useRef<HTMLDivElement>(null);
   const adapterRef = useRef<Adapter | null>(null);
@@ -67,21 +60,10 @@ export default function VideoStage({
     fn();
   }, [isController]);
 
-  // Play del controlador: si el contenedor pide cuenta regresiva (onStartIntent
-  // → true), gateamos el reproductor AHORA mismo (pausa local + suppress, sin
-  // emitir) para que el video no arranque antes del 3·2·1. El play real llega
-  // luego por el estado autoritativo (room-state) al terminar el conteo.
+  // Play del controlador: emite el comando de reproducción a la sala.
   const handleLocalPlay = useCallback((time: number) => {
-    emitWhileControlling(() => {
-      if (onStartIntent && onStartIntent(time)) {
-        suppress.current = true;
-        try { adapterRef.current?.pause(); } catch { /* */ }
-        window.setTimeout(() => { suppress.current = false; }, 250);
-        return;
-      }
-      onPlay(time);
-    });
-  }, [emitWhileControlling, onPlay, onStartIntent]);
+    emitWhileControlling(() => onPlay(time));
+  }, [emitWhileControlling, onPlay]);
 
   // ── Crear / destruir el adaptador cuando cambia el video ──
   useEffect(() => {
@@ -289,7 +271,7 @@ export default function VideoStage({
   if (!video) {
     return (
       <div className="aspect-video bg-[#0d1520] rounded-3xl flex flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
-        <img src="/pochi-sleep.png?v=20260622" alt="" aria-hidden="true" className="w-48 h-auto opacity-90" />
+        <img src="/pocine-empty.png?v=20260622" alt="" aria-hidden="true" className="w-48 h-auto opacity-90" />
         <p className="text-sm font-medium">Sin video seleccionado</p>
         {isController && <p className="text-xs opacity-60">Agregá uno en la cola de videos</p>}
       </div>

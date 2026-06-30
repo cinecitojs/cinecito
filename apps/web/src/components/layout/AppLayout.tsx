@@ -1,9 +1,11 @@
-// apps/web/src/components/layout/AppLayout.tsx  — FASE 2
-// Navbar + decoraciones de fondo + ThemeToggle
+// apps/web/src/components/layout/AppLayout.tsx
+// Sistema de navegación "Soft Premiere": rail lateral flotante (desktop),
+// barra inferior flotante + top-bar mínima (mobile). Sólo capa visual:
+// mismas rutas, mismo logout, mismo ThemeToggle, misma lógica de sesión.
 
-import React, { useContext } from 'react';
+import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { LogOut, Home, Compass, Settings, Heart, Shield } from 'lucide-react';
+import { LogOut, Home, Compass, Settings, Heart, Shield, Clapperboard } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Avatar } from '../ui';
 import ThemeToggle from '../ui/ThemeToggle';
@@ -11,7 +13,6 @@ import Footer from './Footer';
 import { SupporterBadge } from '../SupporterBadge';
 import { useSupporter } from '../../hooks/useSupporter';
 import { displayTierOf } from '../../lib/supporterRewards';
-import { ThemeContext } from '../../app/App';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -25,96 +26,118 @@ export default function AppLayout({ children, hideNav = false }: AppLayoutProps)
   const { data: supporter } = useSupporter();
 
   const navLinks = [
-    { to: '/home',          icon: <Home     className="w-4 h-4" />, label: 'Inicio' },
-    { to: '/explore',       icon: <Compass  className="w-4 h-4" />, label: 'Explorar' },
-    { to: '/configuracion', icon: <Settings className="w-4 h-4" />, label: 'Ajustes' },
-    ...(user?.role === 'ADMIN'
-      ? [{ to: '/admin', icon: <Shield className="w-4 h-4" />, label: 'Admin' }]
-      : []),
+    { to: '/home',          icon: Home,     label: 'Inicio' },
+    { to: '/explore',       icon: Compass,  label: 'Explorar' },
+    { to: '/configuracion', icon: Settings, label: 'Ajustes' },
+    ...(user?.role === 'ADMIN' ? [{ to: '/admin', icon: Shield, label: 'Admin' }] : []),
   ];
+  const isActive = (to: string) => location.pathname === to;
+
+  // Vista inmersiva (Sala): sin cromo de navegación.
+  if (hideNav) return <main className="min-h-screen">{children}</main>;
+
+  const railItem = (to: string, Icon: typeof Home, label: string, tone: 'nav' | 'support' = 'nav') => {
+    const active = isActive(to);
+    const activeCls = tone === 'support'
+      ? 'bg-secondary/15 text-[var(--secondary-fg)]'
+      : 'bg-primary/12 text-[var(--primary-dark)] dark:text-primary';
+    return (
+      <Link key={to} to={to} aria-label={label} aria-current={active ? 'page' : undefined}
+        className={`group relative grid place-items-center w-12 h-12 rounded-2xl transition-[background-color,color] duration-150 ease-out
+          ${active ? activeCls : 'text-[var(--text-muted)] hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 hover:text-[var(--text)]'}`}>
+        <Icon className="w-5 h-5" />
+        <span className="pointer-events-none absolute left-[calc(100%+14px)] top-1/2 -translate-y-1/2 whitespace-nowrap
+                         rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold px-2.5 py-1.5
+                         opacity-0 group-hover:opacity-100 transition-opacity duration-150 shadow-cine-sm z-50">
+          {label}
+        </span>
+      </Link>
+    );
+  };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* ── Fondo decorativo (estático) ── */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute top-0 left-1/3 w-80 h-80 rounded-full bg-primary/8 blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-80 h-80 rounded-full bg-accent/8 blur-3xl" />
-      </div>
+    <div className="min-h-screen">
+      {/* Atmósfera contenida (una sola luz, detrás de todo) */}
+      <div className="app-ambient" aria-hidden="true" />
 
-      {/* ── Navbar ── */}
-      {!hideNav && (
-        <nav className="relative z-20 border-b border-[var(--border)] bg-surface/80 dark:bg-dark-surface/80 backdrop-blur-sm sticky top-0">
-          <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-4">
-            {/* Logo */}
-            <Link to="/home" className="flex items-center gap-2 shrink-0">
-              <span className="font-cursive text-xl text-primary leading-none">Cinecito</span>
+      {/* ── Rail lateral flotante (desktop) ── */}
+      <aside className="hidden lg:flex fixed left-4 top-4 bottom-4 z-40 w-[68px] flex-col items-center justify-between
+                        py-4 rounded-[26px] bg-surface dark:bg-dark-surface border border-[var(--border)] shadow-cine-sm">
+        <div className="flex flex-col items-center gap-3">
+          <Link to="/home" aria-label="Cinecito — inicio"
+            className="grid place-items-center w-11 h-11 rounded-2xl bg-primary/12 text-[var(--primary-dark)] dark:text-primary
+                       hover:brightness-105 transition-[filter] duration-150">
+            <Clapperboard className="w-5 h-5" />
+          </Link>
+          <span className="w-7 h-px bg-[var(--border)]" aria-hidden="true" />
+          <nav className="flex flex-col items-center gap-1.5">
+            {navLinks.map((l) => railItem(l.to, l.icon, l.label))}
+          </nav>
+        </div>
+
+        <div className="flex flex-col items-center gap-1.5">
+          {railItem('/apoyar', Heart, 'Apoyar', 'support')}
+          <ThemeToggle />
+          {user && (
+            <>
+              <Link to="/configuracion" aria-label="Tu perfil y ajustes"
+                className="relative grid place-items-center w-12 h-12 rounded-2xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-colors">
+                <Avatar name={user.username} src={user.avatar} size="sm" />
+                {supporter?.tier && (
+                  <span className="absolute bottom-0.5 right-0.5">
+                    <SupporterBadge tier={displayTierOf(supporter)} size="xs" showLabel={false} />
+                  </span>
+                )}
+              </Link>
+              <button onClick={() => { clearAuth(); navigate('/login'); }} aria-label="Cerrar sesión"
+                className="grid place-items-center w-12 h-12 rounded-2xl text-[var(--text-muted)]
+                           hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 hover:text-[var(--error)] transition-colors">
+                <LogOut className="w-5 h-5" />
+              </button>
+            </>
+          )}
+        </div>
+      </aside>
+
+      {/* ── Top-bar mínima (mobile/tablet) ── */}
+      <header className="lg:hidden sticky top-0 z-30 h-14 flex items-center justify-between px-4
+                         bg-surface/85 dark:bg-dark-surface/85 backdrop-blur-md border-b border-[var(--border)]">
+        <Link to="/home" className="font-cursive text-xl text-primary leading-none">Cinecito</Link>
+        <div className="flex items-center gap-1">
+          <Link to="/apoyar" aria-label="Apoyar a Cinecito"
+            className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--secondary-fg)] transition-colors">
+            <Heart className="w-5 h-5" />
+          </Link>
+          <ThemeToggle />
+          {user && (
+            <Link to="/configuracion" aria-label="Tu perfil y ajustes" className="ml-1">
+              <Avatar name={user.username} src={user.avatar} size="xs" />
             </Link>
-
-            {/* Nav links — desktop */}
-            <div className="hidden md:flex items-center gap-1 ml-4">
-              {navLinks.map((l) => (
-                <Link key={l.to} to={l.to}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all
-                    ${location.pathname === l.to
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2'
-                    }`}>
-                  {l.icon} {l.label}
-                </Link>
-              ))}
-            </div>
-
-            <div className="ml-auto flex items-center gap-2">
-              <Link to="/apoyar" aria-label="Apoyar a Cinecito" title="Apoyar a Cinecito"
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-sm font-semibold transition-colors
-                  ${location.pathname === '/apoyar'
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-[var(--text-muted)] hover:text-primary hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2'}`}>
-                <Heart className="w-4 h-4" /> <span className="hidden sm:inline">Apoyar</span>
-              </Link>
-              <ThemeToggle />
-
-              {user && (
-                <>
-                  <Link to="/configuracion" aria-label="Tu perfil y ajustes"
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-2xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-colors">
-                    <Avatar name={user.username} src={user.avatar} size="xs" />
-                    <span className="text-sm font-semibold hidden sm:inline">{user.username}</span>
-                    {supporter?.tier && <SupporterBadge tier={displayTierOf(supporter)} size="xs" showLabel={false} />}
-                  </Link>
-                  <button onClick={() => { clearAuth(); navigate('/login'); }}
-                    className="p-2 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/30 text-[var(--text-muted)] hover:text-red-500 transition-colors">
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Mobile bottom nav — solo en rutas de app */}
-          <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-[var(--border)] bg-surface/95 dark:bg-dark-surface/95 backdrop-blur-sm flex">
-            {navLinks.map((l) => (
-              <Link key={l.to} to={l.to}
-                className={`flex-1 flex flex-col items-center gap-0.5 py-3 text-xs font-semibold transition-colors
-                  ${location.pathname === l.to ? 'text-primary' : 'text-[var(--text-muted)]'}`}>
-                {l.icon} {l.label}
-              </Link>
-            ))}
-          </div>
-        </nav>
-      )}
+          )}
+        </div>
+      </header>
 
       {/* ── Contenido ── */}
-      <main className={`relative z-10 flex-1 ${!hideNav ? 'pb-16 md:pb-0' : ''}`}>
-        {children}
-      </main>
+      <div className="relative z-10 lg:pl-[92px] flex flex-col min-h-screen">
+        <main className="flex-1 pb-24 lg:pb-0">{children}</main>
+        <Footer />
+      </div>
 
-      {/* ── Footer global (oculto en vista inmersiva sin nav) ── */}
-      {!hideNav && (
-        <div className="pb-16 md:pb-0">
-          <Footer />
-        </div>
-      )}
+      {/* ── Barra inferior flotante (mobile/tablet) ── */}
+      <nav aria-label="Navegación principal"
+        className="lg:hidden fixed bottom-3 left-3 right-3 z-40 flex px-1.5 py-1.5 gap-1
+                   rounded-[22px] bg-surface/95 dark:bg-dark-surface/95 backdrop-blur-md border border-[var(--border)] shadow-cine-lg">
+        {navLinks.map((l) => {
+          const Icon = l.icon; const active = isActive(l.to);
+          return (
+            <Link key={l.to} to={l.to} aria-label={l.label} aria-current={active ? 'page' : undefined}
+              className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-2xl text-[11px] font-semibold transition-colors
+                ${active ? 'bg-primary/12 text-[var(--primary-dark)] dark:text-primary' : 'text-[var(--text-muted)]'}`}>
+              <Icon className="w-5 h-5" /> {l.label}
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

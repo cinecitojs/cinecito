@@ -43,7 +43,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
         } bg-[var(--bg)] dark:bg-dark-bg text-[var(--text)]`}
         role="alert"
       >
-        <img src="/pochi-sleep.png?v=20260622" alt="" aria-hidden="true"
+        <img src="/pocine-empty.png?v=20260622" alt="" aria-hidden="true"
           className={`${compact ? 'w-24' : 'w-36'} h-auto select-none`} draggable={false} />
         <div className="max-w-sm">
           <h1 className="font-display font-bold text-xl">Uy, algo se rompió</h1>

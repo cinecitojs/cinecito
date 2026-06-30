@@ -1,22 +1,24 @@
-// apps/web/src/pages/Home.tsx  — FASE 4 (Etapa 2: Inicio como centro de operaciones)
-// Solo reconstrucción visual/UX. La lógica de salas (create/join/delete/copy) se mantiene.
+// apps/web/src/pages/Home.tsx — Dashboard (centro de uso real)
+// Restructuración visual a panel/cards compactos: el usuario hace todo sin
+// scroll largo. TODA la lógica de salas (query/create/join/delete/copy) se
+// conserva intacta. Estética celeste/crema kawaii premium (cielo-root).
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Film, Plus, Key, Users, Play, Trash2, ArrowRight, Copy, Check,
-  Compass, Clapperboard, Globe, Lock, Mail, Heart,
+  Plus, Key, Users, Trash2, ArrowRight, Copy, Check, Play, Youtube,
+  ShieldCheck, Compass, Sparkles, Clapperboard, Heart, ChevronRight,
 } from 'lucide-react';
-
-const ROOM_MODES = [
-  { key: 'public'  as const, icon: Globe, label: 'Pública',         desc: 'Aparece en Explorar — cualquiera puede entrar.' },
-  { key: 'private' as const, icon: Lock,  label: 'Privada',         desc: 'Se entra con el link de invitación.' },
-  { key: 'invite'  as const, icon: Mail,  label: 'Solo invitación', desc: 'Cada ingreso lo aprueba el anfitrión.' },
-];
 import { roomsApi } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
-import { Button, Input, Modal, Badge, Avatar, Spinner, toast } from '../components/ui';
+import { Button, Input, Modal, Avatar, Skeleton, EmptyState, toast } from '../components/ui';
 import AppLayout from '../components/layout/AppLayout';
+
+const ROOM_MODES = [
+  { key: 'public'  as const, label: 'Pública',         desc: 'Aparece en Explorar. Cualquiera puede entrar.' },
+  { key: 'private' as const, label: 'Privada',         desc: 'Se entra con el link de invitación.' },
+  { key: 'invite'  as const, label: 'Solo invitación', desc: 'Cada ingreso lo aprobás vos.' },
+];
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
@@ -41,39 +43,30 @@ export default function Home() {
   const [newRoom, setNewRoom]       = useState<{ name: string; description: string; mode: 'public' | 'private' | 'invite' }>({ name: '', description: '', mode: 'private' });
   const [creating, setCreating]     = useState(false);
 
-  const [copiedId, setCopiedId]       = useState<string | null>(null);
+  const [copiedId, setCopiedId]         = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
-  const [deleting, setDeleting]       = useState(false);
+  const [deleting, setDeleting]         = useState(false);
 
   const { data: rawRooms = [], isLoading } = useQuery({
     queryKey: ['my-rooms'],
     queryFn:  () => roomsApi.myRooms().then((r) => r.data.rooms as Room[]),
   });
 
-  // Recientes primero
   const rooms = useMemo(
     () => [...rawRooms].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)),
     [rawRooms],
   );
   const playing = useMemo(() => rooms.filter((r) => r.currentVideoId), [rooms]);
 
-  const greeting = rooms.length === 0
-    ? '¿Qué miramos hoy?'
-    : `Tenés ${rooms.length} sala${rooms.length === 1 ? '' : 's'} lista${rooms.length === 1 ? '' : 's'} para la función.`;
-
   // ── Unirse: acepta código de sala o link de invitación ──
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     const raw = joinCode.trim();
     if (!raw) return;
-
-    // Si pegan un link de invitación → llevar a la pantalla de previsualización
     const inviteMatch = raw.match(/invite\/([A-Za-z0-9]+)/);
     if (inviteMatch) { navigate(`/invite/${inviteMatch[1]}`); return; }
-
     const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
     if (!code) { setJoinError('Ingresá un código o link válido'); return; }
-
     setJoining(true); setJoinError('');
     try {
       const { data } = await roomsApi.join({ code });
@@ -89,7 +82,7 @@ export default function Home() {
     setCreating(true);
     try {
       const { data } = await roomsApi.create({ name: newRoom.name, description: newRoom.description, mode: newRoom.mode });
-      toast(`Sala "${data.name}" creada 🎬`, 'success');
+      toast(`Tu sala "${data.name}" está lista`, 'success');
       qc.invalidateQueries({ queryKey: ['my-rooms'] });
       setShowCreate(false);
       setNewRoom({ name: '', description: '', mode: 'private' });
@@ -118,245 +111,252 @@ export default function Home() {
     toast('Código copiado', 'success');
   };
 
+  const firstName = (user?.username || 'cinéfilo').split(/\s+/)[0];
+
   return (
     <AppLayout>
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+      <div className="cielo-root max-w-6xl mx-auto px-5 sm:px-8 py-7 lg:py-9">
 
-        {/* ── Bienvenida ── */}
-        <div className="flex items-center gap-4 animate-slide-up">
-          <Avatar name={user?.username || '?'} size="lg" src={user?.avatar} />
-          <div className="flex-1 min-w-0">
-            <h1 className="font-display font-bold text-2xl sm:text-3xl leading-tight">
-              Hola, <span className="text-primary">{user?.username}</span> 👋
-            </h1>
-            <p className="text-sm text-[var(--text-muted)] mt-0.5">{greeting}</p>
+        {/* ── Saludo ── */}
+        <header className="flex items-center justify-between gap-4 mb-7">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <Avatar name={user?.username || '?'} size="lg" src={user?.avatar} />
+            <div className="min-w-0">
+              <h1 className="cielo-display font-bold text-2xl sm:text-3xl leading-tight tracking-tight">
+                Hola, <span className="cielo-ink-sky">{firstName}</span>
+              </h1>
+              <p className="text-sm text-[var(--text-muted)] mt-0.5">Tu panel para crear, entrar y ver en sincronía.</p>
+            </div>
           </div>
-          <Button size="lg" className="hidden sm:inline-flex shrink-0" onClick={() => setShowCreate(true)}>
+          <Button size="lg" onClick={() => setShowCreate(true)} className="shrink-0 hidden sm:inline-flex">
             <Plus className="w-5 h-5" /> Crear sala
           </Button>
-        </div>
+        </header>
 
-        {/* ── Accesos rápidos ── */}
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-slide-up" style={{ animationDelay: '0.05s' }}>
-          {/* Crear sala (destacada) */}
-          <button
-            onClick={() => setShowCreate(true)}
-            className="text-left rounded-3xl p-5 border-2 border-primary/40 bg-primary/5
-                       hover:bg-primary/10 hover:shadow-cine hover:-translate-y-0.5 transition-all"
-          >
-            <div className="w-11 h-11 rounded-2xl bg-primary/15 text-primary flex items-center justify-center mb-3">
-              <Clapperboard className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold mb-0.5">Crear sala</h3>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">Elegí el video y abrí tu cine.</p>
-          </button>
+        {/* ── Grid dashboard ── */}
+        <div className="grid lg:grid-cols-3 gap-5">
 
-          {/* Unirse (código o link) */}
-          <div className="rounded-3xl p-5 border border-[var(--border)] bg-surface dark:bg-dark-surface">
-            <div className="w-11 h-11 rounded-2xl bg-secondary/20 text-pink-500 flex items-center justify-center mb-3">
-              <Key className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold mb-2">Unirse</h3>
-            <form onSubmit={handleJoin} className="flex gap-2">
-              <input
-                type="text"
-                aria-label="Código de sala o link de invitación"
-                placeholder="Código o link…"
-                value={joinCode}
-                onChange={(e) => { setJoinCode(e.target.value); setJoinError(''); }}
-                className="flex-1 min-w-0 h-9 px-3 rounded-xl border border-[var(--border)] bg-[var(--bg)] dark:bg-dark-surface2
-                           text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-              />
-              <Button type="submit" size="sm" loading={joining} className="shrink-0 px-3" aria-label="Unirse a la sala">
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </form>
-            {joinError && <p className="text-red-500 text-xs mt-1.5">{joinError}</p>}
-          </div>
+          {/* ════ Columna principal ════ */}
+          <div className="lg:col-span-2 space-y-5">
 
-          {/* Explorar */}
-          <button
-            onClick={() => navigate('/explore')}
-            className="text-left rounded-3xl p-5 border border-[var(--border)] bg-surface dark:bg-dark-surface
-                       hover:border-primary/40 hover:shadow-cine hover:-translate-y-0.5 transition-all"
-          >
-            <div className="w-11 h-11 rounded-2xl bg-accent/20 text-purple-500 flex items-center justify-center mb-3">
-              <Compass className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold mb-0.5">Explorar</h3>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">Descubrí salas públicas.</p>
-          </button>
-        </section>
+            {/* Panel de acción: empezar una función */}
+            <section className="cielo-panel rounded-[1.5rem] p-5 sm:p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="w-4 h-4 cielo-ink-sky" />
+                <h2 className="cielo-display font-bold text-lg">Empezá una función</h2>
+              </div>
 
-        {/* ── Reproduciendo ahora (condicional) ── */}
-        {playing.length > 0 && (
-          <section className="animate-slide-up" style={{ animationDelay: '0.08s' }}>
-            <h2 className="font-display font-semibold text-sm text-[var(--text-muted)] mb-3 flex items-center gap-2">
-              <span className="online-dot" /> Reproduciendo ahora
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {playing.map((room) => (
-                <button
-                  key={room.id}
-                  onClick={() => navigate(`/room/${room.id}`)}
-                  className="flex items-center gap-3 text-left rounded-2xl p-3 border border-[var(--border)]
-                             bg-surface dark:bg-dark-surface hover:border-[var(--success)]/50 hover:shadow-cine-sm transition-all"
-                >
-                  <span className="w-10 h-10 rounded-xl bg-[var(--success)]/15 text-[var(--success)] flex items-center justify-center shrink-0">
-                    <Play className="w-5 h-5" />
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm truncate">{room.name}</p>
-                    <p className="text-xs text-[var(--text-muted)]">{room._count?.members || 0} viendo · en vivo</p>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-[var(--success)] shrink-0" />
+              <div className="grid sm:grid-cols-2 gap-3">
+                {/* Crear */}
+                <button onClick={() => setShowCreate(true)}
+                  className="group text-left rounded-2xl p-4 cielo-cta
+                             transition-transform duration-150 active:scale-[0.98]">
+                  <Clapperboard className="w-6 h-6 mb-6 opacity-95" />
+                  <p className="cielo-display font-bold text-[15px]">Crear una sala</p>
+                  <p className="text-[12.5px] text-white/85">Pegás el enlace de YouTube o Vimeo adentro.</p>
                 </button>
-              ))}
-            </div>
-          </section>
-        )}
 
-        {/* ── Mis salas ── */}
-        <section className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="font-display font-bold text-lg flex items-center gap-2">
-              <Film className="w-5 h-5 text-primary" /> Mis salas
-              {rooms.length > 0 && <Badge color="blue">{rooms.length}</Badge>}
-            </h2>
-            <Button onClick={() => setShowCreate(true)} size="sm" className="sm:hidden">
-              <Plus className="w-4 h-4" /> Crear
-            </Button>
-          </div>
-
-          {isLoading ? (
-            <Spinner />
-          ) : rooms.length === 0 ? (
-            <div className="text-center py-12 flex flex-col items-center gap-3">
-              <img src="/pochi-sleep.png?v=20260622" alt="Pochi dormido esperando" className="w-48 h-auto select-none" draggable={false} />
-              <p className="font-bold">Pochi está esperando la función</p>
-              <p className="text-sm text-[var(--text-muted)]">Creá tu primera sala o unite con un código.</p>
-              <Button onClick={() => setShowCreate(true)} className="mt-2">
-                <Plus className="w-4 h-4" /> Crear mi primera sala
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {rooms.map((room) => (
-                <div
-                  key={room.id}
-                  onClick={() => navigate(`/room/${room.id}`)}
-                  className="group cursor-pointer bg-surface dark:bg-dark-surface rounded-3xl border border-[var(--border)] p-5
-                             hover:border-primary/40 hover:shadow-cine hover:-translate-y-1 transition-all"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-11 h-11 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
-                      <Film className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => copyCode(room.code, room.id, e)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-xl bg-[var(--surface-2)] dark:bg-dark-surface2 text-xs font-mono font-bold text-[var(--text-muted)] hover:text-primary transition-colors"
-                        title="Copiar código"
-                      >
-                        {copiedId === room.id
-                          ? <Check className="w-3 h-3 text-green-500" />
-                          : <Copy className="w-3 h-3" />}
-                        {room.code}
-                      </button>
-                      {room.ownerId === user?.id && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: room.id, name: room.name }); }}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/30 text-red-400 transition-all"
-                          title="Eliminar sala"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
+                {/* Unirse */}
+                <form onSubmit={handleJoin}
+                  className="rounded-2xl p-4 bg-[var(--surface-2)] dark:bg-[#222a44] flex flex-col">
+                  <Key className="w-6 h-6 mb-6 cielo-ink-sky" />
+                  <p className="cielo-display font-bold text-[15px] mb-2">Unirse con código</p>
+                  <div className="flex items-center gap-2 rounded-xl bg-[var(--surface)] dark:bg-[#1b2138] border border-[var(--border)] pl-3 pr-1 py-1
+                                  focus-within:border-[#5FA6DD] transition-colors">
+                    <input
+                      type="text" aria-label="Código de sala o link de invitación"
+                      placeholder="Código o link…" value={joinCode}
+                      onChange={(e) => { setJoinCode(e.target.value); setJoinError(''); }}
+                      className="flex-1 min-w-0 bg-transparent text-sm py-1.5 focus:outline-none font-mono uppercase placeholder:normal-case placeholder:font-sans" />
+                    <button type="submit" disabled={joining} aria-label="Unirse"
+                      className="shrink-0 grid place-items-center w-8 h-8 rounded-lg cielo-cta disabled:opacity-50">
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
                   </div>
+                  {joinError && <p className="text-[var(--error)] text-xs mt-1.5">{joinError}</p>}
+                </form>
+              </div>
+            </section>
 
-                  <h3 className="font-bold leading-tight mb-3 line-clamp-1">{room.name}</h3>
-
-                  <div className="flex items-center gap-2 flex-wrap text-sm text-[var(--text-muted)]">
-                    <span className="flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5" /> {room._count?.members || 0}
-                    </span>
-                    {room.currentVideoId && (
-                      <span className="flex items-center gap-1 text-[var(--success)]">
-                        <Play className="w-3.5 h-3.5" /> En vivo
-                      </span>
-                    )}
-                    {room.isPrivate
-                      ? <Badge color="purple">Privada</Badge>
-                      : <Badge color="green">Pública</Badge>}
-                  </div>
-
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--border)]">
-                    <p className="text-xs text-[var(--text-muted)]">Actualizada {formatDate(room.updatedAt)}</p>
-                    <ArrowRight className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
+            {/* En vivo ahora */}
+            {playing.length > 0 && (
+              <section className="cielo-panel rounded-[1.5rem] p-5 sm:p-6">
+                <div className="flex items-center gap-2 mb-3.5">
+                  <span className="online-dot" />
+                  <h2 className="cielo-display font-bold text-lg">En vivo ahora</h2>
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
+                <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
+                  {playing.map((room) => (
+                    <button key={room.id} onClick={() => navigate(`/room/${room.id}`)}
+                      className="group snap-start shrink-0 w-56 text-left rounded-2xl p-3.5 bg-[var(--surface-2)] dark:bg-[#222a44]
+                                 hover:-translate-y-0.5 transition-transform duration-200">
+                      <div className="aspect-video rounded-xl bg-[linear-gradient(135deg,#E6F1FA,#DFE7F7)] dark:bg-[linear-gradient(135deg,#283154,#1d2138)]
+                                      grid place-items-center mb-2.5 relative">
+                        <Play className="w-7 h-7 cielo-ink-sky fill-current" />
+                        <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#E5727E] text-white text-[10px] font-bold">EN VIVO</span>
+                      </div>
+                      <p className="cielo-display font-bold text-sm truncate">{room.name}</p>
+                      <p className="text-[12px] text-[var(--text-muted)]">{room._count?.members || 0} viendo</p>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
 
-        {/* ── Apoyo voluntario (sutil, no intrusivo) ── */}
-        <section className="animate-slide-up" style={{ animationDelay: '0.12s' }}>
-          <div className="rounded-3xl border border-[var(--border)] bg-gradient-to-r from-primary/8 via-surface to-secondary/8 dark:from-primary/10 dark:via-dark-surface dark:to-secondary/10 p-5 flex items-center gap-4">
-            <img src="/pochi-wink.png?v=20260622" alt="" className="w-14 h-auto select-none shrink-0 hidden sm:block" draggable={false} />
-            <div className="flex-1 min-w-0">
-              <p className="font-bold">¿Te gusta Cinecito?</p>
-              <p className="text-sm text-[var(--text-muted)]">Es gratis y lo seguirá siendo. Si querés, un aporte voluntario ayuda a mantenerlo. 🐾</p>
-            </div>
-            <div className="flex items-center shrink-0">
-              <button onClick={() => navigate('/apoyar')}
-                className="group sheen-host inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-gradient-to-r from-primary to-[var(--primary-dark)] text-white font-bold text-sm
-                           hover:-translate-y-0.5 hover:brightness-110 active:scale-95 transition-all motion-reduce:transition-none motion-reduce:hover:translate-y-0">
-                <Heart className="w-4 h-4 fill-white/80 group-hover:scale-110 transition-transform motion-reduce:transition-none" /> Apoyar
-              </button>
-            </div>
+            {/* Tus salas */}
+            <section className="cielo-panel rounded-[1.5rem] p-5 sm:p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="cielo-display font-bold text-lg">
+                  Tus salas{rooms.length > 0 && <span className="text-[var(--text-muted)] font-sans font-semibold text-sm"> · {rooms.length}</span>}
+                </h2>
+                <button onClick={() => navigate('/explore')}
+                  className="inline-flex items-center gap-1 text-[13px] font-semibold cielo-ink-sky hover:gap-1.5 transition-[gap]">
+                  <Compass className="w-4 h-4" /> Explorar
+                </button>
+              </div>
+
+              {isLoading ? (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-20 rounded-2xl" />
+                  ))}
+                </div>
+              ) : rooms.length === 0 ? (
+                <EmptyState
+                  pose="empty"
+                  title="Tu cine está a oscuras"
+                  description="Creá tu primera sala y encendé la función para verla con quien quieras."
+                  action={<Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4" /> Crear sala</Button>}
+                />
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {rooms.slice(0, 6).map((room) => (
+                    <div key={room.id} onClick={() => navigate(`/room/${room.id}`)}
+                      className="group cursor-pointer rounded-2xl p-3.5 bg-[var(--surface-2)] dark:bg-[#222a44]
+                                 hover:-translate-y-0.5 transition-transform duration-200 flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-xl bg-[linear-gradient(135deg,#DCEBF8,#E6E2FA)] dark:bg-[#2a3354] grid place-items-center shrink-0 relative">
+                        <Clapperboard className="w-5 h-5 cielo-ink-sky" />
+                        {room.currentVideoId && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#E5727E] border-2 border-[var(--surface-2)]" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="cielo-display font-bold text-sm truncate">{room.name}</p>
+                        <div className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+                          <span className="inline-flex items-center gap-1"><Users className="w-3 h-3" />{room._count?.members || 0}</span>
+                          <span aria-hidden>·</span>
+                          <span>{room.isPrivate ? 'Privada' : 'Pública'}</span>
+                          <span aria-hidden>·</span>
+                          <span>{formatDate(room.updatedAt)}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button onClick={(e) => copyCode(room.code, room.id, e)} title="Copiar código"
+                          className="grid place-items-center w-8 h-8 rounded-lg text-[var(--text-muted)] hover:text-[#2E78B6] hover:bg-[var(--surface)] dark:hover:bg-[#1b2138] transition-colors">
+                          {copiedId === room.id ? <Check className="w-4 h-4 text-[#4FBE94]" /> : <Copy className="w-4 h-4" />}
+                        </button>
+                        {room.ownerId === user?.id && (
+                          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: room.id, name: room.name }); }} title="Eliminar"
+                            className="grid place-items-center w-8 h-8 rounded-lg text-[var(--text-muted)] opacity-0 group-hover:opacity-100 hover:bg-[var(--error)]/10 hover:text-[var(--error)] transition-all">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
-        </section>
+
+          {/* ════ Columna lateral: info siempre accesible ════ */}
+          <aside className="space-y-5">
+            {/* Compatibilidad */}
+            <section className="cielo-panel rounded-[1.5rem] p-5">
+              <h3 className="cielo-display font-bold text-base mb-3">Compatible con</h3>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="rounded-xl bg-[#FF0000]/7 grid place-items-center py-3.5 gap-1">
+                  <Youtube className="w-6 h-6 text-[#c4302b]" />
+                  <span className="text-[12px] font-semibold">YouTube</span>
+                </div>
+                <div className="rounded-xl bg-[#1AB7EA]/10 grid place-items-center py-3.5 gap-1">
+                  <Play className="w-5 h-5 text-[#1199c9] fill-current" />
+                  <span className="text-[12px] font-semibold">Vimeo</span>
+                </div>
+              </div>
+              <p className="text-[12px] text-[var(--text-muted)] mt-3 leading-relaxed">Pegá cualquier enlace público dentro de tu sala.</p>
+            </section>
+
+            {/* Privacidad */}
+            <section className="cielo-panel rounded-[1.5rem] p-5 flex gap-3.5 items-center">
+              <img src="/pocine-dream.png?v=20260630" alt="" className="w-16 h-auto select-none shrink-0" draggable={false} />
+              <div>
+                <h3 className="cielo-display font-bold text-base mb-1 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-[#4FBE94]" /> Sin alojar nada
+                </h3>
+                <p className="text-[12.5px] text-[var(--text-muted)] leading-relaxed">
+                  No subimos ni guardamos videos. Solo sincronizamos el momento. El contenido vive en YouTube o Vimeo.
+                </p>
+              </div>
+            </section>
+
+            {/* Ayuda rápida */}
+            <section className="cielo-panel rounded-[1.5rem] p-5">
+              <h3 className="cielo-display font-bold text-base mb-3">¿Cómo funciona?</h3>
+              <ol className="space-y-2.5">
+                {[
+                  'Creá una sala o entrá con un código.',
+                  'Pegá un enlace de YouTube o Vimeo.',
+                  'Miren el mismo segundo, en sincronía.',
+                ].map((t, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-[13px] text-[var(--text)]">
+                    <span className="shrink-0 grid place-items-center w-5 h-5 rounded-full cielo-cta cielo-display text-[11px] font-bold mt-px">{i + 1}</span>
+                    {t}
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+            {/* Apoyo */}
+            <button onClick={() => navigate('/apoyar')}
+              className="w-full cielo-panel rounded-[1.5rem] p-4 flex items-center gap-3 text-left
+                         hover:-translate-y-0.5 transition-transform duration-200">
+              <span className="grid place-items-center w-10 h-10 rounded-xl bg-[#F4B0C9]/20 shrink-0">
+                <Heart className="w-5 h-5 text-[#d6688c] fill-[#d6688c]/40" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="cielo-display font-bold text-sm">Apoyá Cinecito</p>
+                <p className="text-[12px] text-[var(--text-muted)]">Gratis siempre. Un aporte ayuda.</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
+            </button>
+          </aside>
+        </div>
       </div>
 
       {/* ── Modal: crear sala ── */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Nueva sala">
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="flex justify-center mb-2">
-            <img src="/pochi-wink.png?v=20260622" alt="" className="w-36 h-auto select-none" draggable={false} />
+            <img src="/pocine-celebrate.png?v=20260630" alt="" className="w-32 h-auto select-none" draggable={false} />
           </div>
-
-          <Input
-            label="Nombre de la sala *"
-            placeholder="Ej: Noche de películas"
-            value={newRoom.name}
-            onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
-            required
-          />
-          <Input
-            label="Descripción (opcional)"
-            placeholder="¿Qué van a ver?"
-            value={newRoom.description}
-            onChange={(e) => setNewRoom({ ...newRoom, description: e.target.value })}
-          />
+          <Input label="Nombre de la sala *" placeholder="Ej: Noche de películas"
+            value={newRoom.name} onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })} required />
+          <Input label="Descripción (opcional)" placeholder="¿Qué van a ver?"
+            value={newRoom.description} onChange={(e) => setNewRoom({ ...newRoom, description: e.target.value })} />
 
           <div className="space-y-2">
             <p className="text-sm font-semibold">Modo de la sala</p>
             {ROOM_MODES.map((m) => {
-              const Icon = m.icon;
               const active = newRoom.mode === m.key;
               return (
                 <button type="button" key={m.key} onClick={() => setNewRoom({ ...newRoom, mode: m.key })}
                   className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all
-                    ${active ? 'border-primary bg-primary/10' : 'border-[var(--border)] hover:border-primary/40'}`}>
-                  <Icon className={`w-5 h-5 shrink-0 ${active ? 'text-primary' : 'text-[var(--text-muted)]'}`} />
+                    ${active ? 'border-[#5FA6DD] bg-[#5FA6DD]/10' : 'border-[var(--border)] hover:border-[#5FA6DD]/40'}`}>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm">{m.label}</p>
                     <p className="text-xs text-[var(--text-muted)] leading-snug">{m.desc}</p>
                   </div>
-                  <span className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${active ? 'border-primary' : 'border-[var(--border)]'}`}>
-                    {active && <span className="w-2 h-2 rounded-full bg-primary" />}
+                  <span className={`w-4 h-4 rounded-full border-2 shrink-0 grid place-items-center ${active ? 'border-[#3E8CCB]' : 'border-[var(--border)]'}`}>
+                    {active && <span className="w-2 h-2 rounded-full bg-[#3E8CCB]" />}
                   </span>
                 </button>
               );

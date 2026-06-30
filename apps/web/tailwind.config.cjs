@@ -6,43 +6,46 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans:    ['Nunito', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        display: ['Fredoka', 'Nunito', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans:    ['Nunito', 'Zen Kaku Gothic New', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Fredoka', 'Zen Maru Gothic', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         cursive: ['Pacifico', 'cursive'],
       },
       colors: {
-        // Brand Cinecito (gira alrededor de Pochi)
-        primary:   { DEFAULT: '#6ECBF5', dark: '#1D6FA8', fg: '#FFFFFF' },
-        secondary: { DEFAULT: '#FF8FB0', fg: '#5A1430' },
-        accent:    { DEFAULT: '#C9B6FF', fg: '#3C2F73' },
-        marquee:   '#FFB845',
+        // Brand Cinecito — mundo de Pociné (periwinkle/lavanda soñador)
+        primary:   { DEFAULT: '#6FB1E0', dark: '#2E78B6', fg: '#FFFFFF' },
+        secondary: { DEFAULT: '#C0AEE8', fg: '#4A3A78' },
+        accent:    { DEFAULT: '#F4B0C9', fg: '#8A3357' },
+        marquee:   '#E3B45C',
 
-        // Surfaces (light)
+        // Surfaces (light) — periwinkle-crema aireado
         surface:  '#FFFFFF',
-        surface2: '#E9F3FC',
-        cinebg:   '#F2F8FF',
+        surface2: '#E8EAFB',
+        cinebg:   '#F1F2FC',
 
-        // Dark mode surfaces — sala de proyección (sin negro puro)
+        // Dark mode — "modo función": noche periwinkle suave
         dark: {
-          bg:       '#0E1726',
-          surface:  '#16203A',
-          surface2: '#1E2B49',
-          border:   '#2C3C60',
+          bg:       '#181A2E',
+          surface:  '#20233E',
+          surface2: '#2A2E4C',
+          border:   '#393E62',
         },
 
         // Semantic
-        online: '#34C77B',
+        online: '#4FBE94',
       },
       borderRadius: {
-        '2xl': '1rem',
-        '3xl': '1.5rem',
-        '4xl': '2rem',
+        // Escala domada: tarjetas ≤20px, contenedores grandes ≤24px (antes 24/32).
+        '2xl': '1rem',      // 16px — tarjetas, botones, inputs
+        '3xl': '1.25rem',   // 20px — tarjetas grandes
+        '4xl': '1.5rem',    // 24px — paneles/contenedores hero
       },
       boxShadow: {
-        'cine-sm': '0 2px 8px rgba(110,203,245,0.15)',
-        'cine':    '0 4px 20px rgba(110,203,245,0.25)',
-        'cine-lg': '0 8px 40px rgba(110,203,245,0.35)',
-        'glow':    '0 0 24px rgba(110,203,245,0.4)',
+        // Sombras neutras tintadas, theme-aware (ver --shadow-* en index.css).
+        // El glow celeste deja de ser universal: queda reservado a 1-2 momentos.
+        'cine-sm': 'var(--shadow-sm)',
+        'cine':    'var(--shadow-md)',
+        'cine-lg': 'var(--shadow-lg)',
+        'glow':    'var(--glow)',
       },
       keyframes: {
         float:      { '0%,100%': { transform: 'translateY(0)' },       '50%': { transform: 'translateY(-10px)' } },

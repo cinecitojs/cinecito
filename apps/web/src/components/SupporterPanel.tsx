@@ -93,7 +93,7 @@ export default function SupporterPanel() {
   const since = supporter?.since ? new Date(supporter.since).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }) : null;
   return (
     <div className="space-y-5">
-      {/* Estado + preview con recompensas VIP aplicadas (fondo, marco, Pochi) */}
+      {/* Estado + preview con recompensas VIP aplicadas (fondo, marco, Pociné) */}
       <div className="rounded-3xl border border-[var(--border)] overflow-hidden">
         <div className={`relative h-32 bg-cover bg-center bg-gradient-to-r ${COVER[displayTier!] || COVER[tier]}`}
           style={{ backgroundImage: `url(${styleReward?.assets.bg || reward.assets.bg})` }}>

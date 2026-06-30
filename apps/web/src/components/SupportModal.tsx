@@ -157,7 +157,7 @@ export default function SupportModal({ open, onClose, tier }: { open: boolean; o
         <div className="space-y-4 text-center">
           <Confetti />
           <div className="flex justify-center">
-            <img src={rewardOf(tier?.id)?.assets.pochi ?? '/pochi-wink.png?v=20260622'} alt="Pochi celebrando" draggable={false}
+            <img src={rewardOf(tier?.id)?.assets.pochi ?? '/pocine-celebrate.png?v=20260622'} alt="Pociné celebrando" draggable={false}
               className="w-28 h-auto select-none animate-pochi-cheer motion-reduce:animate-none" />
           </div>
           <div>
@@ -195,7 +195,7 @@ export default function SupportModal({ open, onClose, tier }: { open: boolean; o
         // ── INFORMACIÓN + REDIRECCIÓN ──
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <img src="/pochi.png?v=20260622" alt="" className="w-12 h-auto select-none shrink-0" draggable={false} />
+            <img src="/pocine-hello.png?v=20260622" alt="" className="w-12 h-auto select-none shrink-0" draggable={false} />
             <p className="text-sm text-[var(--text-muted)] leading-relaxed">
               Tu apoyo ayuda a pagar <span className="font-semibold text-[var(--text)]">hosting, mantenimiento y nuevas funciones</span>.
               Es 100% voluntario y elegís el monto en Ko-fi.

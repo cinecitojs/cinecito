@@ -11,13 +11,7 @@ import { authApi } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { Button, toast } from '../components/ui';
 import ThemeToggle from '../components/ui/ThemeToggle';
-
-const BENEFITS = [
-  'Salas de cine ilimitadas',
-  'Invitá amigos con un código',
-  'Tus salas guardadas para volver',
-  'Chat, voz y reacciones en vivo',
-];
+import CieloScene from '../components/layout/CieloScene';
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 
@@ -110,49 +104,24 @@ export default function Register() {
     'w-full py-2.5 pl-10 rounded-2xl border text-sm transition-all bg-[var(--bg)] dark:bg-dark-surface2 focus:outline-none focus:ring-2 disabled:opacity-50';
 
   return (
-    <div className="min-h-screen flex">
-      {/* ── Panel de beneficios (desktop) ── */}
-      <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col justify-center p-12
-                      bg-surface dark:bg-dark-surface border-r border-[var(--border)]">
-        <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-          <div className="absolute -bottom-10 -left-10 w-72 h-72 rounded-full bg-secondary/15 blur-3xl" />
-          <div className="absolute top-0 right-0 w-56 h-56 rounded-full bg-primary/10 blur-3xl" />
+    <div className="cielo-root relative min-h-[100dvh] flex flex-col items-center justify-center px-5 py-10 overflow-hidden">
+      <CieloScene />
+      <div className="absolute top-4 right-4 z-20"><ThemeToggle /></div>
+
+      <div className="relative z-10 w-full max-w-sm">
+        {/* Mascota sobre nube */}
+        <div className="relative flex items-end justify-center h-24 mb-1 z-10 pointer-events-none">
+          <div aria-hidden="true" className="absolute bottom-1 w-44 h-14 rounded-full bg-white/85 dark:bg-white/10 blur-lg" />
+          <img src="/pocine-celebrate.png?v=20260630" alt="Pociné celebrando"
+            className="relative w-24 h-auto select-none animate-float motion-reduce:animate-none
+                       drop-shadow-[0_16px_28px_rgba(62,140,203,.25)]" draggable={false} />
         </div>
 
-        <div className="relative flex items-center gap-4 mb-7">
-          <img src="/pochi-wink.png?v=20260622" alt="Pochi guiñando un ojo"
-            className="w-24 h-auto drop-shadow-2xl animate-float select-none" draggable={false} />
-          <div>
-            <Link to="/" className="font-cursive text-3xl text-primary">Cinecito</Link>
-            <p className="text-sm text-[var(--text-muted)] mt-1">Sumate, te estábamos esperando 🐾</p>
-          </div>
-        </div>
-
-        <h2 className="relative font-display font-bold text-xl mb-4">Lo que obtenés al crear tu cuenta</h2>
-        <ul className="relative flex flex-col gap-3">
-          {BENEFITS.map((b) => (
-            <li key={b} className="flex items-center gap-3 text-sm font-semibold">
-              <CheckCircle2 className="w-5 h-5 text-[var(--success)] shrink-0" /> {b}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* ── Panel del formulario ── */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 relative">
-        <div className="absolute top-4 right-4"><ThemeToggle /></div>
-
-        <div className="w-full max-w-sm animate-scale-in">
-          {/* Logo mobile */}
-          <div className="lg:hidden text-center mb-6">
-            <img src="/pochi-wink.png?v=20260622" alt="" className="w-24 h-auto mx-auto mb-2 select-none" draggable={false} />
-            <Link to="/" className="font-cursive text-3xl text-primary">Cinecito</Link>
-          </div>
-
-          <h1 className="font-display font-bold text-2xl sm:text-3xl mb-1">Creá tu cuenta</h1>
-          <p className="text-sm text-[var(--text-muted)] mb-6">
+        <div className="cielo-panel rounded-[1.75rem] p-6 sm:p-7">
+          <h1 className="cielo-display font-bold text-2xl sm:text-[1.7rem] text-center">Creá tu cuenta</h1>
+          <p className="text-sm text-[#54607a] dark:text-[#AEB6D0] text-center mt-1 mb-6">
             ¿Ya tenés una?{' '}
-            <Link to="/login" className="text-primary font-semibold hover:underline">Iniciá sesión</Link>
+            <Link to="/login" className="cielo-ink-sky font-bold hover:underline">Iniciá sesión</Link>
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
@@ -309,16 +278,16 @@ export default function Register() {
 
           <p className="text-center text-xs text-[var(--text-muted)] mt-5">
             ¿Solo querés probar?{' '}
-            <button type="button" onClick={() => navigate('/guest')} className="text-accent-fg dark:text-accent font-semibold hover:underline">
+            <button type="button" onClick={() => navigate('/guest')} className="cielo-ink-sky font-bold hover:underline">
               Entrá como invitado
             </button>
           </p>
-
-          <Link to="/"
-            className="flex items-center justify-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-primary mt-4 transition-colors">
-            <ArrowLeft className="w-3.5 h-3.5" /> Volver al inicio
-          </Link>
         </div>
+
+        <Link to="/"
+          className="flex items-center justify-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-primary mt-5 transition-colors">
+          <ArrowLeft className="w-3.5 h-3.5" /> Volver al inicio
+        </Link>
       </div>
     </div>
   );

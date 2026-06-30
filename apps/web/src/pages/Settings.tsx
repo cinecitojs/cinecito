@@ -59,9 +59,9 @@ const CONSENT_LABELS: Record<string, string> = {
 };
 
 const AVATAR_PRESETS = [
-  { src: '/pochi.png?v=20260622',       label: 'Pochi' },
-  { src: '/pochi-wink.png?v=20260622',  label: 'Pochi guiño' },
-  { src: '/pochi-sleep.png?v=20260622', label: 'Pochi dormido' },
+  { src: '/pocine-hello.png?v=20260622',       label: 'Pociné' },
+  { src: '/pocine-celebrate.png?v=20260622',  label: 'Pociné guiño' },
+  { src: '/pocine-empty.png?v=20260622', label: 'Pociné dormido' },
 ];
 
 interface Room {
@@ -502,7 +502,7 @@ export default function Settings() {
             </span>
           </div>
           <div>
-            <p className="text-xs font-semibold text-[var(--text-muted)] mb-2">Elegí a Pochi</p>
+            <p className="text-xs font-semibold text-[var(--text-muted)] mb-2">Elegí a Pociné</p>
             <div className="grid grid-cols-3 gap-3">
               {AVATAR_PRESETS.map((p) => (
                 <button key={p.src} onClick={() => setAvatarDraft(p.src)}

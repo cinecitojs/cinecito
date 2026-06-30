@@ -30,46 +30,28 @@ import RoomThemeBackdrop from '../components/room/RoomThemeBackdrop';
 import { useSupporter } from '../hooks/useSupporter';
 import { ReactionsOverlay, ReactionBar, useFloatingReactions } from '../components/room/FloatingReactions';
 import OnboardingTour, { TOUR_SEEN_KEY } from '../components/room/OnboardingTour';
-import CountdownOverlay from '../components/room/CountdownOverlay';
 
 const DEFAULT_PERMS: RoomPermissions = {
   addVideo: 'host', removeVideo: 'host', skip: 'host', pauseResume: 'everyone', seek: 'everyone',
 };
-
-// Cuenta regresiva cinematográfica: duración del 3·2·1 y cooldown tras una pausa.
-// Tras pausar, no se vuelve a mostrar el overlay hasta pasados 2 minutos (evita
-// que aparezca en cada reanudación rápida; solo "al iniciar" el video).
-const COUNTDOWN_MS = 2600;
-const COUNTDOWN_COOLDOWN_MS = 2 * 60 * 1000;
 
 type MobileTab = 'video' | 'chat' | 'sala';
 
 // Video + capa de reacciones flotantes + barra de emojis. Definido a nivel de
 // módulo (identidad estable) para que VideoStage NO se remonte en cada render.
 function StageWithReactions({
-  stageProps, items, onReact, compactBar, hideBar, countdown, serverOffset, onCountdownDone,
+  stageProps, items, onReact, compactBar, hideBar,
 }: {
   stageProps: any;
   items: { id: number; emoji: string; left: number; drift: number; scale: number }[];
   onReact: (emoji: string) => void;
   compactBar?: boolean;
   hideBar?: boolean;
-  countdown?: { startAt: number; durationMs: number } | null;
-  serverOffset?: number;
-  onCountdownDone?: () => void;
 }) {
   return (
     <div className="relative">
       <VideoStage {...stageProps} />
       <ReactionsOverlay items={items} />
-      {countdown && (
-        <CountdownOverlay
-          startAt={countdown.startAt}
-          durationMs={countdown.durationMs}
-          serverOffset={serverOffset ?? 0}
-          onDone={onCountdownDone ?? (() => {})}
-        />
-      )}
       {/* Arriba a la derecha: no tapa la barra de controles del reproductor (abajo). */}
       {!hideBar && <ReactionBar onPick={onReact} compact={compactBar} className="absolute top-2 right-2 z-30" />}
     </div>
@@ -164,60 +146,12 @@ export default function Room() {
   // Reacciones flotantes efímeras (#8).
   const reactions = useFloatingReactions();
 
-  // Cuenta regresiva cinematográfica (3·2·1·play) sincronizada por el servidor.
-  const [countdown, setCountdown] = useState<{ startAt: number; durationMs: number } | null>(null);
-  const countdownRef = useRef(countdown);
-  countdownRef.current = countdown; // espejo para el listener de room-state
-
-  // Cooldown del overlay: rastrea cuándo se pausó por última vez y el video actual.
-  // La cuenta regresiva solo se muestra "al iniciar": video nuevo / primer play, o
-  // si pasaron ≥2 min desde la última pausa. Refs → decisión instantánea y sin re-render.
-  const lastPauseAtRef = useRef<number | null>(null);
-  const wasPlayingRef  = useRef(false);
-  const lastVideoIdRef = useRef<string | null | undefined>(undefined);
-
-  // Procesa cada sesión nueva para el cooldown: detecta pausa (playing→paused) y
-  // cambio de video (reinicia el cooldown → permite cuenta regresiva en el nuevo).
-  const trackSessionForCountdown = useCallback((s: RoomSession | null) => {
-    if (!s) return;
-    if (lastVideoIdRef.current !== s.currentVideoId) {
-      lastVideoIdRef.current = s.currentVideoId ?? null;
-      lastPauseAtRef.current = null; // video nuevo → arranque "fresco"
-      wasPlayingRef.current = false;
-    }
-    if (wasPlayingRef.current && !s.isPlaying) lastPauseAtRef.current = Date.now();
-    wasPlayingRef.current = s.isPlaying;
-  }, []);
-
-  // ¿Mostrar la cuenta regresiva en este play? Solo "al iniciar": nunca se pausó
-  // (arranque fresco) o ya pasó el cooldown desde la última pausa.
-  const shouldCountdown = useCallback(() => {
-    const lp = lastPauseAtRef.current;
-    return lp == null || (Date.now() - lp) >= COUNTDOWN_COOLDOWN_MS;
-  }, []);
-
-  // Intención de play del controlador (la llama VideoStage). Si toca cuenta
-  // regresiva, mostramos el overlay YA (local, inmediato), avisamos al servidor
-  // para que lo difunda y agende el play autoritativo, y devolvemos true → el
-  // reproductor se gatea localmente (no arranca hasta el "play"). Si no, false →
-  // reanudación normal e instantánea (sin overlay).
-  const onStartIntent = useCallback((t: number) => {
-    if (!roomId || !shouldCountdown()) return false;
-    const startAt = Date.now() + serverOffsetRef.current + COUNTDOWN_MS; // epoch del servidor
-    setCountdown({ startAt, durationMs: COUNTDOWN_MS });
-    socket.startCountdown(roomId, t, startAt, COUNTDOWN_MS);
-    return true;
-    // socket.startCountdown es estable; evitamos re-crear esta fn por identidad del socket.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, shouldCountdown]);
-
   // Mini tutorial de bienvenida (onboarding).
   const [tourOpen, setTourOpen] = useState(false);
   const tourCheckedRef = useRef(false);
   const closeTour = useCallback(() => { setTourOpen(false); try { localStorage.setItem(TOUR_SEEN_KEY, '1'); } catch { /* */ } }, []);
 
   // Reloj: offset entre el servidor y este cliente.
-  const serverOffsetRef = useRef(0);
   const [serverOffset, setServerOffset] = useState(0);
 
   // Modal de agregar video (único, multi-fuente).
@@ -306,18 +240,11 @@ export default function Room() {
   const applyJoinResult = useCallback((result: any) => {
     setMessages(result.messages || []);
     setSession(result.session);
-    // Inicializa el rastreo de cooldown SIN registrar una pausa: al entrar, el
-    // estado actual es el punto de partida (un primer play será "fresco").
-    lastVideoIdRef.current = result.session?.currentVideoId ?? null;
-    wasPlayingRef.current  = !!result.session?.isPlaying;
-    lastPauseAtRef.current = null;
     setOnlineIds(result.onlineUserIds || []);
     setIsHost(!!result.isHost);
     if (result.permissions) setPermissions(result.permissions);
     if (typeof result.serverTime === 'number') {
-      const off = result.serverTime - Date.now();
-      serverOffsetRef.current = off;
-      setServerOffset(off);
+      setServerOffset(result.serverTime - Date.now());
     }
   }, []);
 
@@ -360,9 +287,7 @@ export default function Room() {
       if (document.visibilityState === 'visible' && roomId) {
         const { session: s, serverTime } = await socket.requestSync(roomId);
         if (s) setSession(s);
-        const off = serverTime - Date.now();
-        serverOffsetRef.current = off;
-        setServerOffset(off);
+        setServerOffset(serverTime - Date.now());
       }
     };
     document.addEventListener('visibilitychange', onVis);
@@ -383,7 +308,7 @@ export default function Room() {
             && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           try {
             new Notification(`${msg.user?.username || 'Mensaje'} · ${room?.name || 'Cinecito'}`, {
-              body: msg.content?.slice(0, 120), icon: '/pochi.png?v=20260622', tag: `room-${roomId}`,
+              body: msg.content?.slice(0, 120), icon: '/pocine-hello.png?v=20260622', tag: `room-${roomId}`,
             });
           } catch { /* */ }
         }
@@ -394,20 +319,10 @@ export default function Room() {
         ({ messageId, reactions }) => setMessages((p) => p.map((m) => m.id === messageId ? { ...m, reactions } : m))),
       socket.on<{ session: RoomSession; serverTime: number }>('room-state', ({ session: s, serverTime }) => {
         setSession(s);
-        trackSessionForCountdown(s);
         if (typeof serverTime === 'number') {
-          const off = serverTime - Date.now();
-          serverOffsetRef.current = off;
-          setServerOffset(off);
+          setServerOffset(serverTime - Date.now());
         }
-        // Si llega un estado PAUSADO mientras hay cuenta regresiva activa, es una
-        // cancelación (el host pausó/cambió de video) → cortamos el conteo. El
-        // "hold" inicial llega ANTES del evento room-countdown, así que no la pisa.
-        if (!s.isPlaying && countdownRef.current) setCountdown(null);
       }),
-      // Cuenta regresiva cinematográfica sincronizada (3·2·1·play).
-      socket.on<{ startAt: number; durationMs: number }>('room-countdown',
-        ({ startAt, durationMs }) => setCountdown({ startAt, durationMs })),
       socket.on<{ userId: string }>('user-joined', ({ userId }) => {
         if (userId) setOnlineIds((p) => [...new Set([...p, userId])]);
         refetch();
@@ -578,7 +493,7 @@ export default function Room() {
     if (isError && !isFetching) {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
-          <img src="/pochi-sleep.png?v=20260622" alt="" className="w-32 h-auto select-none" draggable={false} />
+          <img src="/pocine-empty.png?v=20260622" alt="" className="w-32 h-auto select-none" draggable={false} />
           <div>
             <p className="font-display font-bold text-lg">No pudimos cargar la sala</p>
             <p className="text-sm text-[var(--text-muted)] mt-1 max-w-xs">
@@ -598,19 +513,9 @@ export default function Room() {
   const stageProps = {
     video: currentVideo, session, serverOffset, isController: canControl,
     onPlay:  (t: number) => roomId && socket.videoPlay(roomId, t),
-    onPause: (t: number) => {
-      // Registramos la pausa localmente (además del eco del servidor) para que el
-      // cooldown de 2 min sea robusto ante un pausa→play muy rápido del controlador.
-      lastPauseAtRef.current = Date.now();
-      wasPlayingRef.current = false;
-      return roomId && socket.videoPause(roomId, t);
-    },
+    onPause: (t: number) => roomId && socket.videoPause(roomId, t),
     onSeek:  (t: number) => roomId && socket.videoSeek(roomId, t),
-    onStartIntent,
   };
-
-  // Props comunes de la cuenta regresiva para cada vista del VideoStage.
-  const stageExtra = { countdown, serverOffset, onCountdownDone: () => setCountdown(null) };
 
   const queueProps = {
     videos: room.videos || [],
@@ -758,7 +663,7 @@ export default function Room() {
           <div className="flex-1 min-h-0 flex items-center justify-center p-3 overflow-hidden">
             {/* Acota el ancho para que el alto 16:9 entre completo en el área disponible */}
             <div className="w-full mx-auto" style={{ maxWidth: 'calc((100dvh - 6rem) * 16 / 9)' }}>
-              <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} {...stageExtra} />
+              <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} />
             </div>
           </div>
 
@@ -804,7 +709,7 @@ export default function Room() {
         <div className="flex-1 flex gap-4 p-4 min-h-0">
           {/* Columna principal: si el video + cola exceden el alto, scrollea ACÁ (no rompe el chat) */}
           <div className="flex-1 flex flex-col gap-4 min-w-0 min-h-0 overflow-y-auto">
-            <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} {...stageExtra} />
+            <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} />
             <VideoQueue {...queueProps} />
           </div>
           {/* Columna lateral: participantes + voz arriba (alto natural, sin que el
@@ -821,7 +726,7 @@ export default function Room() {
         <div className="flex-1 relative bg-black flex flex-col min-h-0">
           <div className="flex-1 min-h-0 flex items-center justify-center p-1 overflow-hidden">
             <div className="w-full mx-auto" style={{ maxWidth: 'min(100%, calc((100dvh - 6rem) * 16 / 9))' }}>
-              <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} hideBar {...stageExtra} />
+              <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} hideBar />
             </div>
           </div>
 
@@ -877,7 +782,7 @@ export default function Room() {
               {/* Acota el ANCHO del video para que su alto 16:9 entre completo en
                   cualquier orientación: full-width en vertical, letterbox en horizontal. */}
               <div className="mx-auto w-full" style={{ maxWidth: 'min(100%, calc((100dvh - 11rem) * 16 / 9))' }}>
-                <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} compactBar {...stageExtra} />
+                <StageWithReactions stageProps={stageProps} items={reactions.items} onReact={pickReaction} compactBar />
               </div>
               <VideoQueue {...queueProps} />
             </div>
