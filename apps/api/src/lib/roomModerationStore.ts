@@ -52,6 +52,16 @@ export function setBan(roomId: string, userId: string, minutes: number): number 
 export function getRoomSettings(roomId: string): RoomSettings {
   return { ...DEFAULT_SETTINGS, ...(settings.get(roomId) ?? {}) };
 }
+
+// ── Snapshot global (para el panel admin) ────────────────────
+export function moderationSnapshot() {
+  let mutedTotal = 0;
+  for (const set of mutes.values()) mutedTotal += set.size;
+  let bannedTotal = 0;
+  const now = Date.now();
+  for (const m of bans.values()) for (const until of m.values()) if (until > now) bannedTotal++;
+  return { mutedTotal, bannedTotal, themedRooms: settings.size };
+}
 export function patchRoomSettings(roomId: string, patch: Partial<RoomSettings>): RoomSettings {
   const next = { ...getRoomSettings(roomId), ...patch };
   next.chatEnabled = !!next.chatEnabled;

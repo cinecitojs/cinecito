@@ -20,6 +20,7 @@ import { validateBody } from '../../lib/validate';
 import { deleteRoomSession } from '../../services/roomSession';
 import { deleteRoomInvites } from '../../lib/inviteStore';
 import { grantSupporter, type SupporterTier } from '../../lib/supporter';
+import { moderationSnapshot } from '../../lib/roomModerationStore';
 
 const adminPre = [authMiddleware, requireAdmin];
 
@@ -146,6 +147,100 @@ const router: FastifyPluginAsync = async (fastify) => {
       },
     });
     reply.send({ rooms });
+  });
+
+  // ── GET /stats — métricas + series de 7 días (sparklines) ──
+  fastify.get('/stats', { preHandler: adminPre }, async (_request, reply) => {
+    const since = new Date(Date.now() - 7 * 86_400_000);
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const days: number[] = [];
+    for (let i = 6; i >= 0; i--) days.push(start.getTime() - i * 86_400_000);
+    const dayIdx = (d: Date) => {
+      const x = new Date(d); x.setHours(0, 0, 0, 0);
+      return days.indexOf(x.getTime());
+    };
+    const bucket = (rows: { createdAt: Date }[]) => {
+      const c = days.map(() => 0);
+      for (const r of rows) { const i = dayIdx(r.createdAt); if (i >= 0) c[i]++; }
+      return c;
+    };
+    const [users, guests, rooms, openReports, supporters, suspended, messages, newUsers, newRooms, recentMsgs] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { isGuest: true } }),
+      prisma.room.count(),
+      prisma.report.count({ where: { status: 'open' } }),
+      prisma.user.count({ where: { supporterTier: { not: null } } }),
+      prisma.user.count({ where: { status: { in: ['suspended', 'blocked'] } } }),
+      prisma.message.count(),
+      prisma.user.findMany({ where: { createdAt: { gte: since } }, select: { createdAt: true } }),
+      prisma.room.findMany({ where: { createdAt: { gte: since } }, select: { createdAt: true } }),
+      prisma.message.count({ where: { createdAt: { gte: since } } }),
+    ]);
+    reply.send({
+      totals: { users, guests, rooms, openReports, supporters, suspended, messages },
+      series: { users: bucket(newUsers), rooms: bucket(newRooms) },
+      last7: { users: newUsers.length, rooms: newRooms.length, messages: recentMsgs },
+      days,
+    });
+  });
+
+  // ── GET /live — instantánea de conexiones y salas activas ──
+  fastify.get('/live', { preHandler: adminPre }, async (_request, reply) => {
+    const io = (fastify as any).io;
+    let sockets: any[] = [];
+    try { sockets = io ? await io.fetchSockets() : []; } catch { sockets = []; }
+    const userIds = new Set<string>();
+    let guests = 0;
+    const roomCount = new Map<string, number>();
+    for (const s of sockets) {
+      const uid = s.data?.userId;
+      if (uid) userIds.add(uid); else guests++;
+      const rid = s.data?.currentRoom;
+      if (rid) roomCount.set(rid, (roomCount.get(rid) || 0) + 1);
+    }
+    const roomIds = [...roomCount.keys()];
+    const rooms = roomIds.length
+      ? await prisma.room.findMany({ where: { id: { in: roomIds } }, select: { id: true, name: true, code: true, currentVideoId: true } })
+      : [];
+    const activeRooms = rooms
+      .map((r) => ({ id: r.id, name: r.name, code: r.code, playing: !!r.currentVideoId, present: roomCount.get(r.id) || 0 }))
+      .sort((a, b) => b.present - a.present);
+    reply.send({
+      connections: sockets.length,
+      users: userIds.size,
+      guests,
+      activeRooms,
+      moderation: moderationSnapshot(),
+    });
+  });
+
+  // ── GET /videos — enlaces pegados (revisión) ──────────────
+  fastify.get('/videos', { preHandler: adminPre }, async (request, reply) => {
+    const { search, limit = '60' } = request.query as any;
+    const take = Math.min(200, Math.max(1, parseInt(limit, 10) || 60));
+    const where: any = {};
+    if (search?.trim()) {
+      where.OR = [
+        { url: { contains: search.trim(), mode: 'insensitive' } },
+        { title: { contains: search.trim(), mode: 'insensitive' } },
+      ];
+    }
+    const videos = await prisma.videoMeta.findMany({
+      where, take, orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, url: true, title: true, source: true, createdAt: true, roomId: true,
+        room: { select: { name: true, code: true } },
+      },
+    });
+    reply.send({ videos });
+  });
+
+  // ── DELETE /videos/:id — quitar un enlace ─────────────────
+  fastify.delete('/videos/:id', { preHandler: adminPre }, async (request, reply) => {
+    const { id } = request.params as any;
+    await prisma.videoMeta.deleteMany({ where: { id } });
+    request.log.info({ admin: (request as any).user.id, video: id }, 'admin: enlace eliminado');
+    reply.send({ ok: true });
   });
 };
 

@@ -95,6 +95,10 @@ export const adminApi = {
     api.post(`/admin/users/${id}/grant`, { tier }),
   deleteUser: (id: string) => api.delete(`/admin/users/${id}`),
   rooms: (search?: string) => api.get('/admin/rooms', { params: search ? { search } : {} }),
+  stats: () => api.get('/admin/stats'),
+  live: () => api.get('/admin/live'),
+  videos: (search?: string) => api.get('/admin/videos', { params: search ? { search } : {} }),
+  deleteVideo: (id: string) => api.delete(`/admin/videos/${id}`),
 };
 
 export const supportApi = {

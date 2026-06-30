@@ -1,10 +1,12 @@
 // apps/web/src/lib/roomThemes.ts
-// Temas DECORATIVOS para salas (recompensa cosmética). Solo afectan un fondo decorativo
-// detrás del contenido (pointer-events:none, sutil) — nunca la funcionalidad de la sala.
-// minTier: 2=colaborador, 3=patrocinador. El componente RoomThemeBackdrop interpreta `decor`.
-import { Clapperboard, Popcorn, Zap, Stars, Projector, type LucideIcon } from 'lucide-react';
+// Ambientes de sala — fondos DECORATIVOS, épicos y vivos (kawaii premium, celeste/crema).
+// Solo afectan un fondo animado detrás del contenido (pointer-events:none) — nunca la
+// funcionalidad. El componente RoomThemeBackdrop interpreta `decor` y arma las capas.
+// minTier: gating SOLO para el tema personal de supporter (2=colaborador, 3=patrocinador).
+// El selector de Ambiente de la sala (Centro de Control) los ofrece todos.
+import { Cloud, Sparkles, Stars, Sunrise, Moon, Droplets, type LucideIcon } from 'lucide-react';
 
-export type ThemeDecor = 'curtain' | 'popcorn' | 'neon' | 'stars' | 'scanlines';
+export type ThemeDecor = 'cotton' | 'aurora' | 'starfall' | 'sunset' | 'galaxy' | 'bubbles';
 
 export interface RoomTheme {
   id: string;
@@ -17,11 +19,12 @@ export interface RoomTheme {
 }
 
 export const ROOM_THEMES: RoomTheme[] = [
-  { id: 'cine-clasico',      name: 'Cine clásico',     minTier: 3, description: 'Telón rojo y luces cálidas.',        icon: Clapperboard, swatch: 'from-red-700 via-rose-600 to-amber-500',   decor: 'curtain' },
-  { id: 'palomitas',         name: 'Palomitas',        minTier: 3, description: 'Lluvia suave de palomitas.',          icon: Popcorn,      swatch: 'from-amber-300 via-yellow-200 to-orange-300', decor: 'popcorn' },
-  { id: 'neon',              name: 'Neón',             minTier: 3, description: 'Resplandor neón retro.',              icon: Zap,          swatch: 'from-fuchsia-500 via-purple-500 to-cyan-400', decor: 'neon' },
-  { id: 'noche-estrellada',  name: 'Noche estrellada', minTier: 3, description: 'Cielo con estrellas titilantes.',     icon: Stars,        swatch: 'from-indigo-900 via-violet-800 to-blue-900', decor: 'stars' },
-  { id: 'proyector-vintage', name: 'Proyector vintage',minTier: 3, description: 'Grano de película y líneas suaves.',  icon: Projector,    swatch: 'from-stone-600 via-amber-700 to-stone-800', decor: 'scanlines' },
+  { id: 'cielo-algodon',  name: 'Cielo de algodón', minTier: 2, description: 'Nubes gigantes que flotan en un cielo celeste.', icon: Cloud,    swatch: 'from-sky-200 via-white to-blue-200',          decor: 'cotton' },
+  { id: 'aurora-pastel',  name: 'Aurora pastel',    minTier: 2, description: 'Cintas de aurora que ondulan suaves.',        icon: Sparkles, swatch: 'from-cyan-200 via-violet-200 to-rose-200',     decor: 'aurora' },
+  { id: 'lluvia-estrellas',name:'Lluvia de estrellas',minTier:3, description: 'Estrellas que titilan y caen despacio.',      icon: Stars,    swatch: 'from-indigo-300 via-sky-300 to-violet-300',    decor: 'starfall' },
+  { id: 'atardecer-malva', name: 'Atardecer malvavisco', minTier: 3, description: 'Cielo durazno y rosa con nubes tibias.',  icon: Sunrise,  swatch: 'from-rose-200 via-amber-100 to-sky-200',       decor: 'sunset' },
+  { id: 'galaxia-kawaii', name: 'Galaxia kawaii',   minTier: 3, description: 'Nebulosas pastel y un cielo estrellado.',     icon: Moon,     swatch: 'from-indigo-300 via-violet-300 to-rose-200',   decor: 'galaxy' },
+  { id: 'burbujas',       name: 'Burbujas',         minTier: 2, description: 'Burbujas translúcidas que suben flotando.',   icon: Droplets, swatch: 'from-sky-100 via-cyan-100 to-blue-200',        decor: 'bubbles' },
 ];
 
 export const THEME_BY_ID: Record<string, RoomTheme> =
