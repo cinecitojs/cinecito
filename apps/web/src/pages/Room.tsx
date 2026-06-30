@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ArrowLeft, Crown, Users, MessageSquare, Play, Settings2, Link as LinkIcon,
+  ArrowLeft, Crown, Users, MessageSquare, Play, SlidersHorizontal, Link as LinkIcon,
   Clapperboard, Minimize2, Phone, PhoneOff, UserPlus, Inbox, Flag,
   HelpCircle, RotateCw, X,
 } from 'lucide-react';
@@ -15,7 +15,7 @@ import { useSocket, type ChatMessage, type RoomSession, type RoomPermissions } f
 import { parseVideoUrl } from '../lib/videoSources';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { Badge, Modal, Input, Button, Spinner, toast, ToastContainer } from '../components/ui';
-import { ParticipantsPanel, VideoQueue, InviteBanner, PermissionsPanel } from '../components/room';
+import { ParticipantsPanel, VideoQueue, InviteBanner } from '../components/room';
 import VideoStage from '../components/room/VideoStage';
 import ChatPanel from '../components/room/ChatPanel';
 import VoicePanel from '../components/room/VoicePanel';
@@ -30,6 +30,7 @@ import RoomThemeBackdrop from '../components/room/RoomThemeBackdrop';
 import { useSupporter } from '../hooks/useSupporter';
 import { ReactionsOverlay, ReactionBar, useFloatingReactions } from '../components/room/FloatingReactions';
 import OnboardingTour, { TOUR_SEEN_KEY } from '../components/room/OnboardingTour';
+import HostControlCenter from '../components/room/HostControlCenter';
 
 const DEFAULT_PERMS: RoomPermissions = {
   addVideo: 'host', removeVideo: 'host', skip: 'host', pauseResume: 'everyone', seek: 'everyone',
@@ -159,7 +160,20 @@ export default function Room() {
   const [addUrl, setAddUrl]     = useState('');
   const [addTitle, setAddTitle] = useState('');
   const [adding, setAdding]     = useState(false);
-  const [permsOpen, setPermsOpen] = useState(false);
+  const [controlOpen, setControlOpen] = useState(false);
+
+  // Ambiente de sala (personalización por dispositivo, reusa el sistema de temas).
+  const [ambiance, setAmbiance] = useState<string | null>(null);
+  useEffect(() => {
+    try { setAmbiance(localStorage.getItem(`cinecito_ambiance_${roomId}`) || null); } catch { /* */ }
+  }, [roomId]);
+  const changeAmbiance = useCallback((id: string | null) => {
+    setAmbiance(id);
+    try {
+      if (id) localStorage.setItem(`cinecito_ambiance_${roomId}`, id);
+      else localStorage.removeItem(`cinecito_ambiance_${roomId}`);
+    } catch { /* */ }
+  }, [roomId]);
 
   const parsed = addUrl.trim() ? parseVideoUrl(addUrl) : null;
 
@@ -573,7 +587,7 @@ export default function Room() {
 
   return (
     <div className="relative h-[100dvh] overflow-hidden flex flex-col bg-[var(--bg)] dark:bg-dark-bg">
-      {activeTheme && <RoomThemeBackdrop themeId={activeTheme} />}
+      {(ambiance || activeTheme) && <RoomThemeBackdrop themeId={ambiance || activeTheme} />}
       <ToastContainer />
 
       <header className="shrink-0 h-14 border-b border-[var(--border)] bg-surface/90 dark:bg-dark-surface/90 backdrop-blur-sm flex items-center gap-3 px-4 sticky top-0 z-20">
@@ -632,16 +646,12 @@ export default function Room() {
               )}
             </button>
           )}
-          {isHost && (
-            <>
-              <button onClick={() => setPermsOpen(true)}
-                className="p-2 rounded-xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-colors"
-                aria-label="Permisos de la sala" title="Permisos de la sala">
-                <Settings2 className="w-4 h-4" />
-              </button>
-              <Badge color="yellow" className="hidden sm:flex"><Crown className="w-3 h-3" /> Host</Badge>
-            </>
-          )}
+          <button onClick={() => setControlOpen(true)}
+            className="p-2 rounded-xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-colors"
+            aria-label="Centro de control de la sala" title="Centro de control">
+            <SlidersHorizontal className="w-4 h-4" />
+          </button>
+          {isHost && <Badge color="yellow" className="hidden sm:flex"><Crown className="w-3 h-3" /> Host</Badge>}
           <button onClick={() => setReportTarget({ type: 'room', id: roomId!, context: room.name, label: `la sala "${room.name}"` })}
             className="p-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/30 text-[var(--text-muted)] hover:text-red-500 transition-colors"
             aria-label="Reportar sala" title="Reportar sala">
@@ -840,10 +850,26 @@ export default function Room() {
         </form>
       </Modal>
 
-      {/* Modal permisos */}
-      <Modal open={permsOpen} onClose={() => setPermsOpen(false)} title="Permisos de la sala">
-        <PermissionsPanel permissions={permissions} onChange={savePermissions} />
-      </Modal>
+      {/* Centro de control de sala (premium): resumen, ambiente, reproducción, permisos, gente */}
+      <HostControlCenter
+        open={controlOpen}
+        onClose={() => setControlOpen(false)}
+        roomName={room.name}
+        code={room.code}
+        privacy={(room as any)?.inviteOnly ? 'invite' : room.isPrivate ? 'private' : 'public'}
+        onlineCount={onlineIds.length}
+        isHost={isHost}
+        hasVideo={!!currentVideo}
+        onRestartAll={() => { if (roomId) socket.videoSeek(roomId, 0); }}
+        onSeekTo={(s) => { if (roomId) socket.videoSeek(roomId, s); }}
+        permissions={permissions}
+        onChangePermissions={savePermissions}
+        ambiance={ambiance}
+        onAmbiance={changeAmbiance}
+        participantsSlot={<ParticipantsPanel {...participantsProps} />}
+        pendingRequests={pendingReqs}
+        onOpenRequests={() => { setControlOpen(false); setShowRequests(true); }}
+      />
 
       {/* Modal invitar amigos (#5) */}
       <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invitar amigos">
