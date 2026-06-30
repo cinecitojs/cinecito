@@ -9,7 +9,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { Play, Key, Youtube, ShieldCheck, Copy, Sparkles } from 'lucide-react';
+import { Play, Youtube, ShieldCheck, Copy, Sparkles, UserRound } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import ThemeToggle from '../components/ui/ThemeToggle';
 import CieloScene, { Twinkle } from '../components/layout/CieloScene';
@@ -55,15 +55,32 @@ export default function Landing() {
       <header className="relative z-20 px-4 pt-3 sm:pt-5">
         <nav className="cielo-glass rounded-full max-w-4xl mx-auto h-14 pl-6 pr-2.5 flex items-center justify-between">
           <span className="font-cursive text-2xl cielo-ink-sky">Cinecito</span>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <ThemeToggle />
-            <motion.span className="inline-block" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 24 }}>
-              <Link to={isAuthenticated ? '/home' : createTo}
-                className="cielo-cta cielo-display inline-flex items-center gap-2 h-10 px-5 rounded-full text-sm font-semibold">
-                {isAuthenticated ? 'Mi panel' : <><Play className="w-4 h-4 fill-white" /> Crear sala</>}
-              </Link>
-            </motion.span>
+            {isAuthenticated ? (
+              <motion.span className="inline-block" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 24 }}>
+                <Link to="/home"
+                  className="cielo-cta cielo-display inline-flex items-center gap-2 h-10 px-5 rounded-full text-sm font-semibold">
+                  Mi panel
+                </Link>
+              </motion.span>
+            ) : (
+              <>
+                <Link to="/login"
+                  className="cielo-display inline-flex items-center h-10 px-3.5 sm:px-4 rounded-full text-sm font-semibold
+                             text-[#3a4a63] dark:text-[#D9DBF2] hover:bg-white/50 dark:hover:bg-white/10 transition-colors">
+                  Iniciar sesión
+                </Link>
+                <motion.span className="inline-block" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 24 }}>
+                  <Link to="/register"
+                    className="cielo-cta cielo-display inline-flex items-center h-10 px-4 sm:px-5 rounded-full text-sm font-semibold">
+                    Registrarme
+                  </Link>
+                </motion.span>
+              </>
+            )}
           </div>
         </nav>
       </header>
@@ -92,7 +109,7 @@ export default function Landing() {
 
             <motion.div {...fade(0.2)} className="mt-8 flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
               <Cta to={createTo}><Play className="w-5 h-5 fill-white" /> Crear sala</Cta>
-              <Cta to="/join" variant="soft"><Key className="w-5 h-5" /> Unirse con código</Cta>
+              <Cta to="/guest" variant="soft"><UserRound className="w-5 h-5" /> Continuar como invitado</Cta>
             </motion.div>
 
             <motion.p {...fade(0.26)}

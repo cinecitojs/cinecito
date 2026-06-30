@@ -302,16 +302,16 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .cielo-sky {
   position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
   background:
-    radial-gradient(70% 42% at 50% -2%, rgba(245,236,201,.38) 0%, transparent 60%),   /* mantequilla, susurro */
-    radial-gradient(62% 46% at 85% 12%, rgba(196,226,245,.60) 0%, transparent 60%),    /* azul hielo */
-    radial-gradient(56% 42% at 10% 32%, rgba(224,231,250,.50) 0%, transparent 60%),    /* lavanda suave */
-    linear-gradient(180deg, #FCFAF4 0%, #EFF6FC 30%, #E2EEF8 58%, #EAEFFA 82%, #F3F1FB 100%);
+    radial-gradient(66% 40% at 50% -4%, rgba(255,248,222,.50) 0%, transparent 58%),    /* sol mantequilla */
+    radial-gradient(72% 52% at 82% 6%, rgba(143,202,238,.78) 0%, transparent 60%),     /* celeste vívido */
+    radial-gradient(60% 48% at 10% 42%, rgba(170,212,240,.58) 0%, transparent 60%),    /* celeste medio */
+    linear-gradient(180deg, #F3FBFF 0%, #D2ECFB 30%, #B2DDF5 56%, #C8E5F7 80%, #E7F3FC 100%);
 }
 .dark .cielo-sky {
   background:
-    radial-gradient(70% 42% at 50% -2%, rgba(126,176,228,.26) 0%, transparent 60%),
-    radial-gradient(56% 42% at 84% 12%, rgba(170,182,235,.16) 0%, transparent 60%),
-    linear-gradient(180deg, #131527 0%, #181A2E 30%, #1C2138 56%, #20243F 80%, #181A2E 100%);
+    radial-gradient(70% 44% at 50% -2%, rgba(110,180,235,.34) 0%, transparent 60%),
+    radial-gradient(56% 42% at 84% 10%, rgba(150,180,235,.18) 0%, transparent 60%),
+    linear-gradient(180deg, #121728 0%, #16203A 32%, #1A2746 58%, #1C2A4A 80%, #161B30 100%);
 }
 
 /* Nubes suaves que respiran/derivan */
