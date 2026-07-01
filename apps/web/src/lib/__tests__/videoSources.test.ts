@@ -46,6 +46,39 @@ describe('parseVideoUrl', () => {
     expect(r.valid).toBe(true);
   });
 
+  it('detecta Dailymotion (con sufijo de título)', () => {
+    const r = parseVideoUrl('https://www.dailymotion.com/video/x7tgad0_mi-video');
+    expect(r.kind).toBe('dailymotion');
+    expect(r.valid).toBe(true);
+    expect(r.providerId).toBe('x7tgad0');
+  });
+
+  it('detecta Dailymotion corto dai.ly', () => {
+    const r = parseVideoUrl('https://dai.ly/x7tgad0');
+    expect(r.kind).toBe('dailymotion');
+    expect(r.valid).toBe(true);
+  });
+
+  it('detecta PeerTube y normaliza a embed', () => {
+    const r = parseVideoUrl('https://framatube.org/w/mwJKbdCr1eHwHCwHkWjP4A');
+    expect(r.kind).toBe('peertube');
+    expect(r.valid).toBe(true);
+    expect(r.url).toBe('https://framatube.org/videos/embed/mwJKbdCr1eHwHCwHkWjP4A');
+  });
+
+  it('Archive.org /details → direct válido (el servidor resuelve el archivo)', () => {
+    const r = parseVideoUrl('https://archive.org/details/some_item');
+    expect(r.kind).toBe('direct');
+    expect(r.valid).toBe(true);
+    expect(r.label).toBe('Archive.org');
+  });
+
+  it('Archive.org archivo directo → direct', () => {
+    const r = parseVideoUrl('https://archive.org/download/foo/foo.mp4');
+    expect(r.kind).toBe('direct');
+    expect(r.valid).toBe(true);
+  });
+
   it('rechaza texto que no es URL', () => {
     const r = parseVideoUrl('no soy una url');
     expect(r.valid).toBe(false);
@@ -85,6 +118,8 @@ describe('sourceToKind', () => {
   it('mapea los sources guardados en DB', () => {
     expect(sourceToKind('youtube')).toBe('youtube');
     expect(sourceToKind('vimeo')).toBe('vimeo');
+    expect(sourceToKind('dailymotion')).toBe('dailymotion');
+    expect(sourceToKind('peertube')).toBe('peertube');
     expect(sourceToKind('hls')).toBe('hls');
     expect(sourceToKind('upload')).toBe('upload');
     expect(sourceToKind('direct')).toBe('direct');

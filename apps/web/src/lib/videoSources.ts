@@ -7,19 +7,32 @@
 // de enlace, lo valida y devuelve el `kind` que sabe reproducir el player.
 // Para sumar una fuente futura basta con agregar un provider a PROVIDERS.
 //
+// Fuentes públicas soportadas: YouTube, Vimeo, Dailymotion, PeerTube,
+// Archive.org, HLS y archivos directos MP4/WebM. Cada una se reproduce con su
+// adaptador de sync en VideoStage. Archive.org (páginas /details) se valida
+// optimista acá y el servidor resuelve el archivo reproducible real.
+//
 // IMPORTANTE (producto): Drive y MEGA son fuentes internas y NO se exponen
 // en la UX. Drive usa una etiqueta genérica ("Enlace de video") y se degrada
 // a `direct` (video nativo, plenamente sincronizable). MEGA se rechaza limpio
 // porque sus archivos cifrados no permiten reproducción sincronizada.
 // ============================================================
 
-export type VideoSourceKind = 'youtube' | 'vimeo' | 'hls' | 'direct' | 'upload' | 'unknown';
+export type VideoSourceKind =
+  | 'youtube'
+  | 'vimeo'
+  | 'dailymotion'
+  | 'peertube'
+  | 'hls'
+  | 'direct'
+  | 'upload'
+  | 'unknown';
 
 export interface ParsedSource {
   kind: VideoSourceKind;
   /** URL original normalizada */
   url: string;
-  /** ID del proveedor (YouTube/Vimeo) cuando aplica */
+  /** ID del proveedor (YouTube/Vimeo/Dailymotion/PeerTube) cuando aplica */
   providerId?: string;
   valid: boolean;
   /** Mensaje de error legible cuando valid === false */
@@ -34,6 +47,10 @@ interface Provider {
 
 const YT_ID = /^[\w-]{6,}$/;
 const DRIVE_ID = /^[\w-]{10,}$/;
+const DM_ID = /^[a-zA-Z0-9]{5,}$/;
+const PT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PT_SHORT = /^[A-Za-z0-9]{22}$/;
+const MEDIA_EXT = /\.(mp4|webm|ogg|ogv|m4v|mov)($|\?)/i;
 
 const stripWww = (host: string) => host.replace(/^www\./, '');
 
@@ -57,6 +74,55 @@ const vimeo: Provider = {
     const id = u.pathname.split('/').filter(Boolean).find((p) => /^\d+$/.test(p)) || '';
     const valid = /^\d+$/.test(id);
     return { kind: 'vimeo', url, providerId: id, valid, error: valid ? undefined : 'No pude leer el ID del video de Vimeo.', label: 'Vimeo' };
+  },
+};
+
+// Dailymotion: SDK propio → sincronización plena. El id puede traer sufijo de
+// título (x7abc_titulo); se recorta al id real.
+const dailymotion: Provider = {
+  match: (u) => ['dailymotion.com', 'dai.ly', 'geo.dailymotion.com'].includes(stripWww(u.hostname)),
+  resolve: (u, url) => {
+    const id = extractDailymotionId(u);
+    const valid = DM_ID.test(id);
+    return { kind: 'dailymotion', url, providerId: id, valid, error: valid ? undefined : 'No pude leer el ID del video de Dailymotion.', label: 'Dailymotion' };
+  },
+};
+
+// PeerTube: red federada (cada instancia es su propio dominio). Se detecta por
+// patrón de ruta + forma del id. Se normaliza al iframe de embed que expone la
+// API de sincronización por postMessage.
+const peertube: Provider = {
+  match: (u) => !!extractPeertubeId(u),
+  resolve: (u, url) => {
+    const id = extractPeertubeId(u);
+    const valid = !!id;
+    return {
+      kind: 'peertube',
+      url: valid ? `${u.origin}/videos/embed/${id}` : url,
+      providerId: id || undefined,
+      valid,
+      error: valid ? undefined : 'Ese enlace de PeerTube no es compatible.',
+      label: 'PeerTube',
+    };
+  },
+};
+
+// Archive.org: la vía sincronizable es el archivo directo (video nativo). Si el
+// enlace ya apunta a un archivo, se reproduce tal cual. Si es una página
+// /details, se acepta optimista y el servidor resuelve el archivo real.
+const archive: Provider = {
+  match: (u) => stripWww(u.hostname) === 'archive.org',
+  resolve: (u, url) => {
+    if (MEDIA_EXT.test(u.pathname)) return { kind: 'direct', url, valid: true, label: 'Archive.org' };
+    const id = u.pathname.match(/\/(?:details|embed|download)\/([^/]+)/);
+    const valid = !!(id && id[1]);
+    return {
+      kind: 'direct',
+      url,
+      valid,
+      error: valid ? undefined : 'Ese enlace de Archive.org no apunta a un video reproducible.',
+      label: 'Archive.org',
+    };
   },
 };
 
@@ -94,11 +160,30 @@ const hls: Provider = {
 };
 
 const directFile: Provider = {
-  match: (u) => /\.(mp4|webm|ogg|mov|m4v)($|\?)/i.test(u.pathname + u.search),
+  match: (u) => MEDIA_EXT.test(u.pathname + u.search),
   resolve: (_u, url) => ({ kind: 'direct', url, valid: true, label: 'Video directo' }),
 };
 
-const PROVIDERS: Provider[] = [youtube, vimeo, googleDrive, mega, hls, directFile];
+const PROVIDERS: Provider[] = [youtube, vimeo, dailymotion, peertube, googleDrive, mega, archive, hls, directFile];
+
+function extractDailymotionId(u: URL): string {
+  const host = stripWww(u.hostname);
+  let id = '';
+  if (host === 'dai.ly') id = u.pathname.slice(1);
+  else if (u.pathname.startsWith('/embed/video/')) id = u.pathname.split('/')[3] || '';
+  else if (u.pathname.startsWith('/video/')) id = u.pathname.split('/')[2] || '';
+  else id = u.searchParams.get('video') || '';
+  return id.split(/[?&_]/)[0];
+}
+
+function extractPeertubeId(u: URL): string {
+  const parts = u.pathname.split('/').filter(Boolean);
+  let id = '';
+  if (parts[0] === 'w' && parts[1]) id = parts[1];
+  else if (parts[0] === 'videos' && (parts[1] === 'watch' || parts[1] === 'embed') && parts[2]) id = parts[2];
+  if (!id) return '';
+  return PT_UUID.test(id) || PT_SHORT.test(id) ? id : '';
+}
 
 export function parseVideoUrl(raw: string): ParsedSource {
   const url = (raw || '').trim();
@@ -124,18 +209,20 @@ export function parseVideoUrl(raw: string): ParsedSource {
 // Mapea el `source` guardado en la DB a nuestro kind del reproductor.
 export function sourceToKind(source: string): VideoSourceKind {
   switch (source) {
-    case 'youtube': return 'youtube';
-    case 'vimeo':   return 'vimeo';
-    case 'hls':     return 'hls';
-    case 'upload':  return 'upload';
-    case 'direct':  return 'direct';
+    case 'youtube':     return 'youtube';
+    case 'vimeo':       return 'vimeo';
+    case 'dailymotion': return 'dailymotion';
+    case 'peertube':    return 'peertube';
+    case 'hls':         return 'hls';
+    case 'upload':      return 'upload';
+    case 'direct':      return 'direct';
     // Fuentes internas: se reproducen con el player nativo.
-    case 'drive':   return 'direct';
-    default:        return 'direct';
+    case 'drive':       return 'direct';
+    default:            return 'direct';
   }
 }
 
-// Carga perezosa de un script externo una sola vez (YouTube / Vimeo SDK).
+// Carga perezosa de un script externo una sola vez (YouTube / Vimeo / Dailymotion SDK).
 const scriptPromises = new Map<string, Promise<void>>();
 export function loadScript(src: string): Promise<void> {
   if (scriptPromises.has(src)) return scriptPromises.get(src)!;

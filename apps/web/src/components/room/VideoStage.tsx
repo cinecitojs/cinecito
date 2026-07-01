@@ -1,8 +1,13 @@
 // ============================================================
 // apps/web/src/components/room/VideoStage.tsx
-// Reproductor sincronizado unificado: YouTube / Vimeo / HLS / MP4.
+// Reproductor sincronizado unificado: YouTube / Vimeo / Dailymotion /
+// PeerTube / HLS / MP4 (Archive.org y Drive se reproducen como MP4 nativo).
 // Modelo: servidor autoritativo + reloj. El controlador emite comandos;
 // el resto sigue la posición objetivo corrigiendo la deriva con histéresis.
+//
+// Cada fuente expone la misma interfaz `Adapter` (play/pause/seek/getTime…),
+// así el motor de sync es idéntico para todas. Sumar una fuente = sumar un
+// builder que cree su adapter; no cambia la lógica de sala ni de sync.
 // ============================================================
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -13,6 +18,20 @@ import { computeTargetTime, resolveDrift } from '../../lib/sync';
 import type { RoomSession } from '../../hooks/useSocket';
 
 interface VideoLike { id: string; source: string; url: string; title?: string | null }
+
+// Extrae el id de Dailymotion de cualquiera de sus formas de enlace.
+function dailymotionId(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+    let id = '';
+    if (host === 'dai.ly') id = u.pathname.slice(1);
+    else if (u.pathname.startsWith('/embed/video/')) id = u.pathname.split('/')[3] || '';
+    else if (u.pathname.startsWith('/video/')) id = u.pathname.split('/')[2] || '';
+    else id = u.searchParams.get('video') || '';
+    return id.split(/[?&_]/)[0];
+  } catch { return ''; }
+}
 
 interface VideoStageProps {
   video: VideoLike | null;
@@ -208,8 +227,89 @@ export default function VideoStage({
       }
     };
 
+    // Dailymotion: SDK propio (DM.player) con API de play/pause/seek y eventos,
+    // igual patrón que YouTube/Vimeo → sincronización plena.
+    const buildDailymotion = async () => {
+      try {
+        await loadScript('https://api.dmcdn.net/all.js');
+        if (cancelled) return;
+        const w = window as any;
+        if (!w.DM || !w.DM.player) { fail('No se pudo cargar el reproductor de video.'); return; }
+        const mount = document.createElement('div');
+        mount.className = 'w-full h-full';
+        host.appendChild(mount);
+        const id = dailymotionId(video.url);
+        let last = 0;
+        const player = w.DM.player(mount, {
+          video: id,
+          width: '100%',
+          height: '100%',
+          params: { autoplay: false, 'queue-enable': false, 'ui-logo': false, controls: isController },
+        });
+        player.addEventListener('apiready', () => { if (!cancelled) setStatus('ready'); });
+        player.addEventListener('error',   () => fail('No se pudo reproducir este video.'));
+        player.addEventListener('timeupdate', () => { try { last = player.currentTime || last; } catch {} });
+        player.addEventListener('play',  () => handleLocalPlay(last));
+        player.addEventListener('pause', () => emitWhileControlling(() => onPause(last)));
+        player.addEventListener('seeked', () => { try { last = player.currentTime; } catch {} emitWhileControlling(() => onSeek(last)); });
+        adapterRef.current = {
+          play:    () => { try { player.play(); } catch {} },
+          pause:   () => { try { player.pause(); } catch {} },
+          seek:    (t) => { try { player.seek(t); last = t; } catch {} },
+          getTime: () => last,
+          isPaused:() => { try { return !!player.paused; } catch { return true; } },
+          setRate: () => { /* Dailymotion no expone playbackRate estable; el seek corrige la deriva */ },
+          destroy: () => { try { player.destroy?.(); } catch {} },
+        };
+      } catch {
+        fail('No se pudo cargar el reproductor de video.');
+      }
+    };
+
+    // PeerTube: iframe de embed + API oficial por postMessage (@peertube/embed-api).
+    // Carga diferida del SDK; si falla, error limpio. Sincronización plena.
+    const buildPeerTube = async () => {
+      try {
+        const iframe = document.createElement('iframe');
+        iframe.className = 'w-full h-full';
+        iframe.setAttribute('allowfullscreen', 'true');
+        iframe.setAttribute('allow', 'autoplay; fullscreen');
+        iframe.setAttribute('frameborder', '0');
+        // ?api=1 habilita la API de control; sin controls para los no-controladores.
+        const sep = video.url.includes('?') ? '&' : '?';
+        iframe.src = `${video.url}${sep}api=1&controls=${isController ? 1 : 0}&peertubeLink=0&title=0&warningTitle=0`;
+        host.appendChild(iframe);
+
+        const { PeerTubePlayer } = await import('@peertube/embed-api');
+        if (cancelled) { iframe.remove(); return; }
+        const player = new PeerTubePlayer(iframe);
+        let last = 0;
+        await player.ready;
+        if (cancelled) { try { player.destroy(); } catch {} return; }
+        setStatus('ready');
+        player.addEventListener('playbackStatusUpdate', (d: any) => {
+          if (typeof d?.position === 'number') last = d.position;
+        });
+        player.addEventListener('play',  () => handleLocalPlay(last));
+        player.addEventListener('pause', () => emitWhileControlling(() => onPause(last)));
+        adapterRef.current = {
+          play:    () => { try { player.play(); } catch {} },
+          pause:   () => { try { player.pause(); } catch {} },
+          seek:    (t) => { try { player.seek(t); last = t; } catch {} },
+          getTime: () => last,
+          isPaused:() => true, // PeerTube no expone un getter fiable; sync se apoya en la posición
+          setRate: (r) => { try { player.setPlaybackRate(r); } catch {} },
+          destroy: () => { try { player.destroy(); } catch {} },
+        };
+      } catch {
+        fail('No se pudo cargar el reproductor de video.');
+      }
+    };
+
     if (kind === 'youtube') buildYouTube();
     else if (kind === 'vimeo') buildVimeo();
+    else if (kind === 'dailymotion') buildDailymotion();
+    else if (kind === 'peertube') buildPeerTube();
     else buildNative();
 
     return () => {
@@ -282,8 +382,9 @@ export default function VideoStage({
     <div className="aspect-video bg-black rounded-3xl overflow-hidden relative">
       <div ref={hostRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
 
-      {/* Bloquea interacción del que no controla (excepto fullscreen del navegador) */}
-      {!isController && status === 'ready' && kind !== 'youtube' && kind !== 'vimeo' && (
+      {/* Bloquea interacción del que no controla (excepto fullscreen del navegador).
+          Los players con iframe/SDK propio ya reciben controls=0 para no-controladores. */}
+      {!isController && status === 'ready' && !['youtube', 'vimeo', 'dailymotion', 'peertube'].includes(kind) && (
         <div className="absolute inset-0" aria-hidden />
       )}
 

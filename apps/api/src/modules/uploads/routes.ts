@@ -1,8 +1,9 @@
 // ============================================================
 // apps/api/src/modules/uploads/routes.ts
 // Videos de la sala: subida (R2, opcional) + URLs externas
-// (YouTube / Vimeo / HLS / MP4) con detección de fuente,
-// validación y permisos unificados (addVideo / removeVideo).
+// (YouTube / Vimeo / Dailymotion / PeerTube / Archive.org / HLS / MP4)
+// con detección de fuente, validación (incl. resolución remota de
+// Archive.org) y permisos unificados (addVideo / removeVideo).
 // ============================================================
 
 import { FastifyPluginAsync } from 'fastify';
@@ -10,7 +11,7 @@ import { randomUUID } from 'crypto';
 import { authMiddleware } from '../../middlewares/auth';
 import { prisma } from '../../lib/db';
 import { canDoVideoAction } from '../../lib/permissions';
-import { resolveVideoSource, defaultTitle } from '../../lib/videoSource';
+import { resolveVideoSourceAsync, defaultTitle } from '../../lib/videoSource';
 import { uploadsEnabled } from '../../../config/env';
 
 const ALLOWED_CONTENT_TYPES = ['video/mp4', 'video/webm', 'video/ogg'];
@@ -82,7 +83,7 @@ const router: FastifyPluginAsync = async (fastify) => {
     const { roomId, url, title } = (request.body as any) || {};
     if (!roomId || !url) return reply.status(400).send({ error: 'roomId and url required' });
 
-    const resolved = resolveVideoSource(String(url));
+    const resolved = await resolveVideoSourceAsync(String(url));
     if (!resolved.valid) return reply.status(400).send({ error: resolved.error || 'El enlace no es válido o no es compatible.' });
     if (!(await assertCanAdd(request, reply, roomId))) return;
 
@@ -97,7 +98,7 @@ const router: FastifyPluginAsync = async (fastify) => {
   const legacyAdd = async (request: any, reply: any) => {
     const { roomId, url, title } = (request.body as any) || {};
     if (!roomId || !url) return reply.status(400).send({ error: 'roomId and url required' });
-    const resolved = resolveVideoSource(String(url));
+    const resolved = await resolveVideoSourceAsync(String(url));
     if (!resolved.valid) return reply.status(400).send({ error: resolved.error || 'Enlace inválido' });
     if (!(await assertCanAdd(request, reply, roomId))) return;
     const video = await prisma.videoMeta.create({
