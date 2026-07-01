@@ -61,6 +61,24 @@ describe('parseVideoUrl', () => {
     expect(r.kind).toBe('direct');
     expect(r.valid).toBe(true);
   });
+
+  it('Google Drive: archivo público → direct con etiqueta genérica', () => {
+    const r = parseVideoUrl('https://drive.google.com/file/d/1AbC_dEfGhIjKlMnOpQrStUvWxYz012/view?usp=sharing');
+    expect(r.kind).toBe('direct');
+    expect(r.valid).toBe(true);
+    expect(r.label).toBe('Enlace de video'); // no expone "Google Drive"
+  });
+
+  it('Google Drive: sin id de archivo → inválido', () => {
+    const r = parseVideoUrl('https://drive.google.com/drive/folders/xyz');
+    expect(r.valid).toBe(false);
+  });
+
+  it('MEGA: se rechaza limpiamente (no sincronizable)', () => {
+    const r = parseVideoUrl('https://mega.nz/file/abc123#key');
+    expect(r.valid).toBe(false);
+    expect(r.label).not.toMatch(/mega/i);
+  });
 });
 
 describe('sourceToKind', () => {
@@ -70,6 +88,7 @@ describe('sourceToKind', () => {
     expect(sourceToKind('hls')).toBe('hls');
     expect(sourceToKind('upload')).toBe('upload');
     expect(sourceToKind('direct')).toBe('direct');
+    expect(sourceToKind('drive')).toBe('direct');
     expect(sourceToKind('loquesea')).toBe('direct');
   });
 });

@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import { authMiddleware } from '../../middlewares/auth';
 import { prisma } from '../../lib/db';
 import { canDoVideoAction } from '../../lib/permissions';
-import { detectSource, defaultTitle } from '../../lib/videoSource';
+import { resolveVideoSource, defaultTitle } from '../../lib/videoSource';
 import { uploadsEnabled } from '../../../config/env';
 
 const ALLOWED_CONTENT_TYPES = ['video/mp4', 'video/webm', 'video/ogg'];
@@ -82,12 +82,12 @@ const router: FastifyPluginAsync = async (fastify) => {
     const { roomId, url, title } = (request.body as any) || {};
     if (!roomId || !url) return reply.status(400).send({ error: 'roomId and url required' });
 
-    const { source, valid } = detectSource(String(url).trim());
-    if (!valid) return reply.status(400).send({ error: 'El enlace no es válido o no es compatible.' });
+    const resolved = resolveVideoSource(String(url));
+    if (!resolved.valid) return reply.status(400).send({ error: resolved.error || 'El enlace no es válido o no es compatible.' });
     if (!(await assertCanAdd(request, reply, roomId))) return;
 
     const video = await prisma.videoMeta.create({
-      data: { roomId, source, url: String(url).trim(), title: title?.trim() || defaultTitle(source) },
+      data: { roomId, source: resolved.source, url: resolved.url, title: title?.trim() || defaultTitle(resolved.source) },
     });
     (fastify as any).io?.to(roomId).emit('video-added', { video });
     return reply.status(201).send({ ok: true, video });
@@ -97,11 +97,11 @@ const router: FastifyPluginAsync = async (fastify) => {
   const legacyAdd = async (request: any, reply: any) => {
     const { roomId, url, title } = (request.body as any) || {};
     if (!roomId || !url) return reply.status(400).send({ error: 'roomId and url required' });
-    const { source, valid } = detectSource(String(url).trim());
-    if (!valid) return reply.status(400).send({ error: 'Enlace inválido' });
+    const resolved = resolveVideoSource(String(url));
+    if (!resolved.valid) return reply.status(400).send({ error: resolved.error || 'Enlace inválido' });
     if (!(await assertCanAdd(request, reply, roomId))) return;
     const video = await prisma.videoMeta.create({
-      data: { roomId, source, url: String(url).trim(), title: title?.trim() || defaultTitle(source) },
+      data: { roomId, source: resolved.source, url: resolved.url, title: title?.trim() || defaultTitle(resolved.source) },
     });
     (request.server as any).io?.to(roomId).emit('video-added', { video });
     return reply.status(201).send({ ok: true, video });
