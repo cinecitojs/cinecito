@@ -207,18 +207,24 @@ export default function VideoStage({
           id, controls: isController, responsive: true, autoplay: false,
         });
         let last = 0;
+        // Estado real de pausa. Vimeo no expone un getter síncrono, así que lo
+        // mantenemos desde sus eventos + las llamadas imperativas. Sin esto,
+        // isPaused() no reflejaba la realidad y el sync NUNCA aplicaba la pausa
+        // remota (la rama `!isPlaying && !isPaused()` quedaba siempre falsa).
+        let paused = true; // arranca en pausa (autoplay:false)
         player.on('timeupdate', (d: any) => { last = d.seconds; });
-        player.on('play',   () => handleLocalPlay(last));
-        player.on('pause',  () => emitWhileControlling(() => onPause(last)));
-        player.on('seeked', (d: any) => emitWhileControlling(() => onSeek(d.seconds)));
+        player.on('play',   () => { paused = false; handleLocalPlay(last); });
+        player.on('pause',  () => { paused = true;  emitWhileControlling(() => onPause(last)); });
+        player.on('ended',  () => { paused = true; });
+        player.on('seeked', (d: any) => { last = d.seconds; emitWhileControlling(() => onSeek(d.seconds)); });
         player.on('error',  () => fail('Vimeo no pudo reproducir este video.'));
         player.ready().then(() => { if (!cancelled) setStatus('ready'); }).catch(() => fail('Vimeo no respondió.'));
         adapterRef.current = {
-          play:    () => player.play().catch(() => {}),
-          pause:   () => player.pause().catch(() => {}),
+          play:    () => { paused = false; return player.play().catch(() => {}); },
+          pause:   () => { paused = true;  return player.pause().catch(() => {}); },
           seek:    (t) => { player.setCurrentTime(t).catch(() => {}); last = t; },
           getTime: () => last,
-          isPaused:() => true,
+          isPaused:() => paused,
           setRate: (r) => { player.setPlaybackRate(r).catch(() => {}); },
           destroy: () => { try { player.destroy(); } catch {} },
         };
@@ -284,20 +290,25 @@ export default function VideoStage({
         if (cancelled) { iframe.remove(); return; }
         const player = new PeerTubePlayer(iframe);
         let last = 0;
+        // Igual que en Vimeo: mantenemos el estado real de pausa desde los
+        // eventos para que el sync pueda aplicar la pausa remota.
+        let paused = true;
         await player.ready;
         if (cancelled) { try { player.destroy(); } catch {} return; }
         setStatus('ready');
         player.addEventListener('playbackStatusUpdate', (d: any) => {
           if (typeof d?.position === 'number') last = d.position;
+          if (d?.playbackState === 'playing') paused = false;
+          else if (d?.playbackState === 'paused' || d?.playbackState === 'ended') paused = true;
         });
-        player.addEventListener('play',  () => handleLocalPlay(last));
-        player.addEventListener('pause', () => emitWhileControlling(() => onPause(last)));
+        player.addEventListener('play',  () => { paused = false; handleLocalPlay(last); });
+        player.addEventListener('pause', () => { paused = true;  emitWhileControlling(() => onPause(last)); });
         adapterRef.current = {
-          play:    () => { try { player.play(); } catch {} },
-          pause:   () => { try { player.pause(); } catch {} },
+          play:    () => { paused = false; try { player.play(); } catch {} },
+          pause:   () => { paused = true;  try { player.pause(); } catch {} },
           seek:    (t) => { try { player.seek(t); last = t; } catch {} },
           getTime: () => last,
-          isPaused:() => true, // PeerTube no expone un getter fiable; sync se apoya en la posición
+          isPaused:() => paused,
           setRate: (r) => { try { player.setPlaybackRate(r); } catch {} },
           destroy: () => { try { player.destroy(); } catch {} },
         };
