@@ -246,15 +246,15 @@ export default function Settings() {
                 <div className={`relative h-24 bg-cover bg-center bg-gradient-to-r ${supDisplay ? SUPPORTER_COVER[supDisplay] : 'from-primary/25 via-accent/20 to-secondary/25'}`}
                   style={supDisplay ? { backgroundImage: `url(${rewardOf(supDisplay)?.assets.bg})` } : undefined} />
                 <div className="px-6 pb-6 -mt-12">
-                  <div className="flex items-end justify-between">
+                  <div className="flex items-center justify-between gap-4">
                     <button onClick={() => { setAvatarDraft(user?.avatar || ''); setShowAvatar(true); }}
-                      className="relative group rounded-full" aria-label="Cambiar avatar">
+                      className="relative group rounded-full shrink-0" aria-label="Cambiar avatar">
                       {supTier ? (
                         <SupporterFrame tier={supDisplay} name={user?.username} src={user?.avatar} size={52} className="w-auto" />
                       ) : (
                         <span className="block w-24 h-24 rounded-full overflow-hidden ring-4 ring-surface dark:ring-dark-surface bg-primary/15 flex items-center justify-center">
                           {user?.avatar
-                            ? <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+                            ? <img src={user.avatar} alt="" className="w-full h-full object-cover object-center" />
                             : <span className="w-full h-full flex items-center justify-center text-3xl font-display font-bold text-primary">{initial}</span>}
                         </span>
                       )}
@@ -497,7 +497,7 @@ export default function Settings() {
           <div className="flex justify-center">
             <span className="w-24 h-24 rounded-full overflow-hidden bg-primary/15 flex items-center justify-center ring-2 ring-[var(--border)]">
               {avatarDraft
-                ? <img src={avatarDraft} alt="" className="w-full h-full object-cover" />
+                ? <img src={avatarDraft} alt="" className="w-full h-full object-cover object-center" />
                 : <span className="text-3xl font-display font-bold text-primary">{initial}</span>}
             </span>
           </div>

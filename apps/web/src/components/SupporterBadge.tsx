@@ -37,7 +37,7 @@ export function FramedAvatar({
   if (!r?.assets?.frame) {
     return (
       <span className={`inline-flex rounded-full overflow-hidden bg-primary/15 items-center justify-center ${className}`} style={{ width, height: width }}>
-        {src ? <img src={src} alt="" className="w-full h-full object-cover" /> : <span className="font-display font-bold text-primary">{initial}</span>}
+        {src ? <img src={src} alt="" className="w-full h-full object-cover object-center" /> : <span className="font-display font-bold text-primary">{initial}</span>}
       </span>
     );
   }
@@ -47,7 +47,7 @@ export function FramedAvatar({
     <div className={`relative select-none ${className}`} style={{ width }}>
       <span className="absolute rounded-full overflow-hidden bg-[var(--surface-2)] dark:bg-dark-surface2 flex items-center justify-center"
         style={{ left: `${cx}%`, top: `${cy}%`, width: av, height: av, transform: 'translate(-50%, -50%)' }}>
-        {src ? <img src={src} alt="" className="w-full h-full object-cover" /> : <span className="font-display font-bold text-primary" style={{ fontSize: av * 0.42 }}>{initial}</span>}
+        {src ? <img src={src} alt="" className="w-full h-full object-cover object-center" /> : <span className="font-display font-bold text-primary" style={{ fontSize: av * 0.42 }}>{initial}</span>}
       </span>
       <img src={r.assets.frame} alt="" draggable={false} className="relative block w-full h-auto pointer-events-none" />
     </div>

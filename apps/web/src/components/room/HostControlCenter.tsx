@@ -10,7 +10,8 @@ import {
   Copy, Check, RotateCcw, CornerDownRight, Lock, Globe, Mail, Info,
   MessageSquare, Smile, VolumeX, Volume2, UserMinus, Trash2,
 } from 'lucide-react';
-import { ROOM_THEMES } from '../../lib/roomThemes';
+import { ROOM_THEMES, type ThemeDecor } from '../../lib/roomThemes';
+import ThemePreview from './ThemePreview';
 import { PermissionsPanel } from './index';
 import { Avatar } from '../ui';
 import type { RoomPermissions, RoomSettings } from '../../hooks/useSocket';
@@ -113,8 +114,8 @@ export default function HostControlCenter(p: Props) {
   const pickAmbiance = (id: string | null) => (p.isHost ? p.onSetSettings({ theme: id }) : p.onLocalAmbiance(id));
 
   const ambiances = [
-    { id: null as string | null, name: 'Ninguno', swatch: 'from-slate-200 to-slate-100 dark:from-slate-700 dark:to-slate-800' },
-    ...ROOM_THEMES.map((t) => ({ id: t.id, name: t.name, swatch: t.swatch })),
+    { id: null as string | null, name: 'Ninguno', swatch: 'from-slate-200 to-slate-100 dark:from-slate-700 dark:to-slate-800', decor: null as ThemeDecor | null },
+    ...ROOM_THEMES.map((t) => ({ id: t.id, name: t.name, swatch: t.swatch, decor: t.decor })),
   ];
 
   if (typeof document === 'undefined') return null;
@@ -229,12 +230,23 @@ export default function HostControlCenter(p: Props) {
                       const active = selectedTheme === a.id || (!selectedTheme && a.id === null);
                       return (
                         <button key={a.id ?? 'none'} onClick={() => pickAmbiance(a.id)}
-                          className={`relative rounded-2xl overflow-hidden h-20 border-2 transition-all
-                            ${active ? 'border-primary scale-[0.98]' : 'border-transparent hover:border-primary/40'}`}>
-                          <span className={`absolute inset-0 bg-gradient-to-br ${a.swatch}`} />
-                          <span className="absolute inset-0 bg-black/10" />
-                          <span className="absolute bottom-1.5 left-2 text-[11px] font-bold text-white drop-shadow">{a.name}</span>
-                          {active && <span className="absolute top-1.5 right-1.5 grid place-items-center w-5 h-5 rounded-full bg-white/90 text-primary"><Check className="w-3.5 h-3.5" /></span>}
+                          aria-pressed={active}
+                          className={`group relative rounded-2xl overflow-hidden h-24 border-2 transition-all duration-200
+                            ${active
+                              ? 'border-primary shadow-[0_0_0_3px_rgba(111,177,224,.25),0_10px_26px_rgba(70,76,140,.20)] scale-[0.98]'
+                              : 'border-transparent hover:border-primary/40 hover:-translate-y-0.5 hover:shadow-cine-md'}`}>
+                          {/* Previsualización VIVA del ambiente */}
+                          {a.decor
+                            ? <ThemePreview decor={a.decor} swatch={a.swatch} />
+                            : <span className={`absolute inset-0 bg-gradient-to-br ${a.swatch}`} />}
+                          {/* Scrim inferior para legibilidad del nombre */}
+                          <span className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/45 to-transparent" />
+                          <span className="absolute bottom-1.5 left-2 text-[11px] font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,.5)]">{a.name}</span>
+                          {active && (
+                            <span className="absolute top-1.5 right-1.5 grid place-items-center w-5 h-5 rounded-full bg-white/95 text-primary shadow">
+                              <Check className="w-3.5 h-3.5" />
+                            </span>
+                          )}
                         </button>
                       );
                     })}

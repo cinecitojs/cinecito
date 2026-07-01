@@ -625,7 +625,7 @@ export default function Room() {
   };
 
   return (
-    <div className="relative h-[100dvh] overflow-hidden flex flex-col bg-[var(--bg)] dark:bg-dark-bg">
+    <div className="relative isolate h-[100dvh] overflow-hidden flex flex-col bg-[var(--bg)] dark:bg-dark-bg">
       {(ambiance || roomSettings.theme || activeTheme) && <RoomThemeBackdrop themeId={ambiance || roomSettings.theme || activeTheme} />}
       <ToastContainer />
 

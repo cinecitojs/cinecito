@@ -10,9 +10,6 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { Avatar } from '../ui';
 import ThemeToggle from '../ui/ThemeToggle';
 import Footer from './Footer';
-import { SupporterBadge } from '../SupporterBadge';
-import { useSupporter } from '../../hooks/useSupporter';
-import { displayTierOf } from '../../lib/supporterRewards';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -23,7 +20,6 @@ export default function AppLayout({ children, hideNav = false }: AppLayoutProps)
   const { user, clearAuth } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const { data: supporter } = useSupporter();
 
   const navLinks = [
     { to: '/home',          icon: Home,     label: 'Inicio' },
@@ -83,11 +79,6 @@ export default function AppLayout({ children, hideNav = false }: AppLayoutProps)
               <Link to="/configuracion" aria-label="Tu perfil y ajustes"
                 className="relative grid place-items-center w-12 h-12 rounded-2xl hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 transition-colors">
                 <Avatar name={user.username} src={user.avatar} size="sm" />
-                {supporter?.tier && (
-                  <span className="absolute bottom-0.5 right-0.5">
-                    <SupporterBadge tier={displayTierOf(supporter)} size="xs" showLabel={false} />
-                  </span>
-                )}
               </Link>
               <button onClick={() => { clearAuth(); navigate('/login'); }} aria-label="Cerrar sesión"
                 className="grid place-items-center w-12 h-12 rounded-2xl text-[var(--text-muted)]
@@ -119,21 +110,21 @@ export default function AppLayout({ children, hideNav = false }: AppLayoutProps)
 
       {/* ── Contenido ── */}
       <div className="relative z-10 lg:pl-[92px] flex flex-col min-h-screen">
-        <main className="flex-1 pb-24 lg:pb-0">{children}</main>
+        <main className="flex-1 pb-20 sm:pb-24 lg:pb-0">{children}</main>
         <Footer />
       </div>
 
       {/* ── Barra inferior flotante (mobile/tablet) ── */}
       <nav aria-label="Navegación principal"
-        className="lg:hidden fixed bottom-3 left-3 right-3 z-40 flex px-1.5 py-1.5 gap-1
-                   rounded-[22px] bg-surface/95 dark:bg-dark-surface/95 backdrop-blur-md border border-[var(--border)] shadow-cine-lg">
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex px-2 py-2 gap-1 
+                   rounded-t-[22px] bg-surface/95 dark:bg-dark-surface/95 backdrop-blur-md border-t border-[var(--border)] shadow-cine-lg sm:bottom-3 sm:left-3 sm:right-3 sm:rounded-[22px]">
         {navLinks.map((l) => {
           const Icon = l.icon; const active = isActive(l.to);
           return (
             <Link key={l.to} to={l.to} aria-label={l.label} aria-current={active ? 'page' : undefined}
-              className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-2xl text-[11px] font-semibold transition-colors
+              className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 px-1 rounded-2xl text-[10px] sm:text-[11px] font-semibold transition-colors
                 ${active ? 'bg-primary/12 text-[var(--primary-dark)] dark:text-primary' : 'text-[var(--text-muted)]'}`}>
-              <Icon className="w-5 h-5" /> {l.label}
+              <Icon className="w-5 h-5" /> <span className="leading-tight">{l.label}</span>
             </Link>
           );
         })}

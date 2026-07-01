@@ -101,9 +101,9 @@ export default function SupporterPanel() {
             className="absolute bottom-1 right-2 w-20 h-auto select-none drop-shadow-lg" />
         </div>
         <div className="px-5 pb-5 -mt-12">
-          <div className="flex items-end gap-3">
+          <div className="flex items-center gap-3">
             <SupporterFrame tier={displayTier} name={user?.username} src={user?.avatar} size={48} className="shrink-0" />
-            <div className="pb-1">
+            <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-display font-bold">{user?.username}</span>
                 <SupporterBadge tier={displayTier} />
