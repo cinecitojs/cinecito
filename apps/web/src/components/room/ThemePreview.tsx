@@ -191,14 +191,14 @@ export default function ThemePreview({ decor, swatch, className = '' }:
         </>
       )}
 
-      {/* ── Copos de nieve: luna + cristales que caen girando ── */}
+      {/* ── Copos de nieve: luna + cristales + ráfaga que va y viene ── */}
       {decor === 'snow' && (
         <>
-          {/* Luna chiquita con halo */}
+          {/* Luna chiquita con halo doble */}
           <span className="absolute top-[10%] right-[12%] w-8 h-8 rounded-full
                            bg-[radial-gradient(circle_at_38%_34%,#FFFFFF_0%,#E8EEFA_58%,#C9D6F0_100%)]"
-            style={{ boxShadow: '0 0 16px rgba(226,236,255,.9)' }} />
-          {/* Copos: dos tamaños, caen con vaivén y giro */}
+            style={{ boxShadow: '0 0 18px rgba(226,236,255,.95), 0 0 36px rgba(190,214,255,.5)' }} />
+          {/* Copos base: dos tamaños, caen con vaivén y giro */}
           {[
             { l: 12, s: 9,  d: 4.2, delay: 0 },
             { l: 30, s: 12, d: 3.6, delay: 1.1 },
@@ -211,10 +211,25 @@ export default function ThemePreview({ decor, swatch, className = '' }:
           ].map((f, i) => (
             <span key={i} className="absolute top-0 amb-mini-snow motion-reduce:hidden"
               style={{ left: `${f.l}%`, ['--d' as string]: `${f.d}s`, ['--delay' as string]: `${f.delay}s`,
-                filter: 'drop-shadow(0 0 3px rgba(214,232,255,.8))' }}>
+                filter: 'drop-shadow(0 0 4px rgba(170,205,255,.9))' }}>
               <MiniFlake size={f.s} />
             </span>
           ))}
+          {/* Ráfaga mini: copos extra que aparecen por lapsos */}
+          <span className="absolute inset-0 amb-gust motion-reduce:hidden" style={{ ['--d' as string]: '11s' }}>
+            {[
+              { l: 20, s: 8,  d: 2.0, delay: 0 },
+              { l: 44, s: 10, d: 1.8, delay: 0.6 },
+              { l: 70, s: 7,  d: 2.2, delay: 0.3 },
+              { l: 86, s: 9,  d: 1.9, delay: 0.9 },
+            ].map((f, i) => (
+              <span key={i} className="absolute top-0 amb-mini-snow"
+                style={{ left: `${f.l}%`, ['--d' as string]: `${f.d}s`, ['--delay' as string]: `${f.delay}s`,
+                  filter: 'drop-shadow(0 0 4px rgba(214,232,255,.95))' }}>
+                <MiniFlake size={f.s} />
+              </span>
+            ))}
+          </span>
           {/* Niebla helada abajo */}
           <span className="absolute inset-x-0 -bottom-2 h-7 blur-md bg-[linear-gradient(to_top,rgba(255,255,255,.75),transparent)]" />
           <Stars tone="rgba(226,238,255,.9)" glow n={8} />

@@ -27,7 +27,7 @@ export const ROOM_THEMES: RoomTheme[] = [
   { id: 'atardecer-malva', name: 'Atardecer malvavisco',minTier: 3, description: 'Hora dorada: sol bajo, bandas durazno y brasas que suben.',    icon: Sunrise,   swatch: 'from-rose-300 via-amber-200 to-sky-200',    decor: 'sunset' },
   { id: 'galaxia-kawaii',  name: 'Galaxia kawaii',      minTier: 3, description: 'Nebulosas profundas y un planetita con anillo.',               icon: Moon,      swatch: 'from-indigo-400 via-violet-300 to-rose-300', decor: 'galaxy' },
   { id: 'burbujas',        name: 'Burbujas de jabón',   minTier: 2, description: 'Pompas iridiscentes que suben bailando entre haces de luz.',   icon: Droplets,  swatch: 'from-sky-100 via-cyan-100 to-indigo-200',   decor: 'bubbles' },
-  { id: 'copos-nieve',     name: 'Copos de nieve',      minTier: 2, description: 'Nevada de medianoche: cristales que caen girando bajo la luna.', icon: Snowflake, swatch: 'from-sky-200 via-indigo-200 to-slate-100',  decor: 'snow' },
+  { id: 'copos-nieve',     name: 'Copos de nieve',      minTier: 2, description: 'Nevada de medianoche: ráfagas de cristales que brillan bajo la luna.', icon: Snowflake, swatch: 'from-sky-200 via-indigo-200 to-slate-100',  decor: 'snow' },
 ];
 
 export const THEME_BY_ID: Record<string, RoomTheme> =

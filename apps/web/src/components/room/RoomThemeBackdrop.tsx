@@ -324,41 +324,92 @@ export default function RoomThemeBackdrop({ themeId }: { themeId?: string | null
         </>
       )}
 
-      {/* ── Copos de nieve: nevada de medianoche bajo la luna ── */}
+      {/* ── Copos de nieve: nevada de medianoche con RÁFAGAS que van y vienen ── */}
       {decor === 'snow' && (
         <>
-          {/* Luna con halo (respira lentísimo) */}
-          <div className="absolute top-[6%] right-[10%] w-[26rem] h-[26rem] rounded-full amb-glow
-                          bg-[radial-gradient(circle,rgba(240,246,255,.5)_0%,rgba(206,220,250,.22)_38%,transparent_66%)]"
-            style={{ animationDuration: '10s' }} />
+          {/* Luz de nieve: claridad fría que respira sobre toda la escena
+              (da vivacidad global sin tocar la legibilidad del centro) */}
+          <div className="absolute -inset-x-1/4 -top-1/4 h-[80%] amb-glow
+                          bg-[radial-gradient(60%_60%_at_50%_20%,rgba(214,232,255,.30),transparent_70%)]
+                          dark:bg-[radial-gradient(60%_60%_at_50%_20%,rgba(186,210,255,.20),transparent_70%)]"
+            style={{ animationDuration: '13s' }} />
+          {/* Luna con halo doble (más presente, respira) */}
+          <div className="absolute top-[4%] right-[7%] w-[30rem] h-[30rem] rounded-full amb-glow
+                          bg-[radial-gradient(circle,rgba(240,246,255,.62)_0%,rgba(206,220,250,.3)_38%,transparent_66%)]"
+            style={{ animationDuration: '9s' }} />
           <div className="absolute top-[13%] right-[17%] w-24 h-24 rounded-full
                           bg-[radial-gradient(circle_at_38%_34%,#FFFFFF_0%,#E8EEFA_58%,#C9D6F0_100%)]
-                          opacity-90 dark:opacity-95"
-            style={{ boxShadow: '0 0 44px rgba(226,236,255,.8), inset -6px -8px 16px rgba(150,170,215,.35)' }} />
+                          opacity-95"
+            style={{ boxShadow: '0 0 60px rgba(226,236,255,.95), 0 0 120px rgba(196,216,255,.5), inset -6px -8px 16px rgba(150,170,215,.35)' }} />
 
-          {/* Capa lejana: motitas borrosas (profundidad) */}
+          {/* Capa lejana: motitas borrosas (profundidad). En claro son azul hielo
+              (blanco puro desaparece sobre el fondo porcelana). */}
           {flakes.filter((f) => f.layer === 0).map((f, i) => (
-            <span key={`f0-${i}`} className="absolute top-0 amb-snow motion-reduce:hidden rounded-full bg-white"
+            <span key={`f0-${i}`} className="absolute top-0 amb-snow motion-reduce:hidden rounded-full bg-[#AFC9EF] dark:bg-white"
               style={{ left: `${f.left}%`, width: 2.5 + f.seed * 2, height: 2.5 + f.seed * 2,
-                filter: 'blur(1px)', ['--o' as string]: '.5',
+                filter: 'blur(1px)', ['--o' as string]: '.55',
                 ['--d' as string]: `${20 + f.seed * 8}s`, ['--delay' as string]: `${f.delay}s` }} />
           ))}
-          {/* Capa media: copos chicos */}
+          {/* Capa media: copos chicos con halo frío. --flake: hielo-acero en claro,
+              blanco luna en oscuro (el SVG lo lee con stroke: var(--flake)). */}
           {flakes.filter((f) => f.layer === 1).map((f, i) => (
-            <span key={`f1-${i}`} className="absolute top-0 amb-snow motion-reduce:hidden"
-              style={{ left: `${f.left}%`, ['--o' as string]: '.8',
+            <span key={`f1-${i}`}
+              className="absolute top-0 amb-snow motion-reduce:hidden
+                         [--flake:#93B6E4] dark:[--flake:rgba(240,246,255,.95)]
+                         [filter:drop-shadow(0_0_4px_rgba(140,178,235,.65))]
+                         dark:[filter:drop-shadow(0_0_4px_rgba(214,232,255,.7))]"
+              style={{ left: `${f.left}%`, ['--o' as string]: '.85',
                 ['--d' as string]: `${14 + f.seed * 6}s`, ['--delay' as string]: `${f.delay}s` }}>
-              <Flake size={10 + f.seed * 7} tone="rgba(236,244,255,.92)" />
+              <Flake size={11 + f.seed * 7} tone="var(--flake)" />
             </span>
           ))}
-          {/* Capa cercana: copos grandes y nítidos con brillo helado */}
+          {/* Capa cercana: cristales grandes; la mitad DESTELLA (late suave, como
+              atrapando la luz de la luna). El brillo va en un span interno para
+              no colisionar con el transform de la caída. */}
           {flakes.filter((f) => f.layer === 2).map((f, i) => (
-            <span key={`f2-${i}`} className="absolute top-0 amb-snow motion-reduce:hidden"
-              style={{ left: `${f.left}%`, ['--o' as string]: '.95',
-                ['--d' as string]: `${10 + f.seed * 4}s`, ['--delay' as string]: `${f.delay}s`,
-                filter: 'drop-shadow(0 0 5px rgba(214,232,255,.75))' }}>
-              <Flake size={18 + f.seed * 11} tone="#FFFFFF" />
+            <span key={`f2-${i}`}
+              className="absolute top-0 amb-snow motion-reduce:hidden
+                         [--flake:#7FA6DC] dark:[--flake:#FFFFFF]
+                         [filter:drop-shadow(0_0_6px_rgba(126,168,232,.8))_drop-shadow(0_0_16px_rgba(158,192,242,.4))]
+                         dark:[filter:drop-shadow(0_0_6px_rgba(220,236,255,.9))_drop-shadow(0_0_18px_rgba(190,214,255,.45))]"
+              style={{ left: `${f.left}%`, ['--o' as string]: '1',
+                ['--d' as string]: `${10 + f.seed * 4}s`, ['--delay' as string]: `${f.delay}s` }}>
+              {i % 2 === 0 ? (
+                <span className="block amb-pulse motion-reduce:animate-none"
+                  style={{ ['--d' as string]: `${2.6 + f.seed * 2}s`, ['--delay' as string]: `${f.seed * 2}s` }}>
+                  <Flake size={19 + f.seed * 12} tone="var(--flake)" />
+                </span>
+              ) : (
+                <Flake size={19 + f.seed * 12} tone="var(--flake)" />
+              )}
             </span>
+          ))}
+
+          {/* RÁFAGAS: dos capas desfasadas que soplan en diagonal por unos
+              segundos y se van. Copos con viento + polvo de diamante. */}
+          {[0, 13].map((offset, g) => (
+            <div key={`gust-${g}`} className="absolute inset-0 amb-gust motion-reduce:hidden"
+              style={{ ['--d' as string]: '26s', ['--delay' as string]: `${offset}s` }}>
+              {flakes.slice(g * 9, g * 9 + 9).map((f, i) => (
+                <span key={`gw-${i}`}
+                  className="absolute top-0 amb-snow-wind
+                             [--flake:#7FA6DC] dark:[--flake:#FFFFFF]
+                             [filter:drop-shadow(0_0_5px_rgba(126,168,232,.75))]
+                             dark:[filter:drop-shadow(0_0_5px_rgba(214,232,255,.8))]"
+                  style={{ left: `${8 + ((f.left * 0.9 + g * 17) % 92)}%`, ['--o' as string]: '.95',
+                    ['--d' as string]: `${5.5 + f.seed * 3}s`, ['--delay' as string]: `${(f.delay % 6).toFixed(1)}s` }}>
+                  <Flake size={12 + f.seed * 10} tone="var(--flake)" />
+                </span>
+              ))}
+              {/* Polvo de diamante: puntitos brillantes que acompañan el soplo */}
+              {flakes.slice(g * 9, g * 9 + 7).map((f, i) => (
+                <span key={`gd-${i}`} className="absolute top-0 amb-snow-wind rounded-full bg-[#8FB2E2] dark:bg-white"
+                  style={{ left: `${(f.left * 0.85 + g * 31 + 10) % 96}%`, width: 2.5, height: 2.5,
+                    boxShadow: '0 0 8px rgba(214,236,255,.95), 0 0 16px rgba(170,205,255,.6)',
+                    ['--o' as string]: '.9', ['--d' as string]: `${4.5 + f.seed * 2.5}s`,
+                    ['--delay' as string]: `${((f.delay + 2) % 6).toFixed(1)}s` }} />
+              ))}
+            </div>
           ))}
 
           {/* Bancos de niebla helada abajo (dos profundidades que derivan) */}
@@ -369,11 +420,11 @@ export default function RoomThemeBackdrop({ themeId }: { themeId?: string | null
                           bg-[linear-gradient(to_top,rgba(224,236,255,.5),transparent)]
                           dark:bg-[linear-gradient(to_top,rgba(140,164,220,.12),transparent)]" />
 
-          {/* Titileo helado en el cielo */}
+          {/* Titileo helado en el cielo (más brillo cerca de la luna) */}
           {stars.slice(0, 30).map((s, i) => (
             <span key={i} className="absolute rounded-full bg-white theme-twinkle motion-reduce:animate-none"
-              style={{ left: `${s.left}%`, top: `${s.top * 0.55}%`, width: Math.max(1.5, s.size - 1), height: Math.max(1.5, s.size - 1),
-                animationDelay: `${s.delay}s`, boxShadow: '0 0 6px rgba(214,232,255,.8)' }} />
+              style={{ left: `${s.left}%`, top: `${s.top * 0.55}%`, width: Math.max(1.5, s.size - 0.5), height: Math.max(1.5, s.size - 0.5),
+                animationDelay: `${s.delay}s`, boxShadow: '0 0 7px rgba(214,232,255,.95), 0 0 14px rgba(170,205,255,.45)' }} />
           ))}
         </>
       )}
