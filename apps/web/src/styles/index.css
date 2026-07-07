@@ -1,12 +1,12 @@
 /* ============================================================
    apps/web/src/styles/index.css
-   Identidad Cinecito — mundo de Pociné: periwinkle/lavanda soñador, crema,
-   blush y manteca. Dark = "modo función" (noche periwinkle suave).
-   Tipografía: Zen Maru Gothic (display) + Zen Kaku Gothic New (cuerpo) + Pacifico (wordmark).
+   Identidad Cinecito — "porcelana de cielo": periwinkle/lavanda soñador con
+   profundidad suave (luz interna + sombra tintada) y grano fino de proyección.
+   Dark = "modo función" (noche periwinkle suave).
+   Tipografía consolidada: Fredoka (display/wordmark) + Nunito (cuerpo).
+   Sistema de formas: botones = píldora · campos = 16px · tarjetas = 24px.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700;900&family=Pacifico&display=swap');
-/* "Cielo compartido" — identidad del nuevo Landing (scope .cielo-root). No afecta al resto de la app. */
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
@@ -43,12 +43,15 @@
   --online:  #4FBE94;
 
   --glow: 0 0 0 transparent;
-  --font-display: 'Fredoka', 'Zen Maru Gothic', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fredoka', ui-sans-serif, system-ui, sans-serif;
 
-  /* Sombras delicadas tintadas a periwinkle (profundidad ligera). */
-  --shadow-sm: 0 1px 2px rgba(70,76,140,.05), 0 3px 10px rgba(70,76,140,.06);
-  --shadow-md: 0 4px 14px rgba(70,76,140,.09), 0 2px 6px rgba(70,76,140,.05);
-  --shadow-lg: 0 16px 44px rgba(70,76,140,.13), 0 6px 16px rgba(70,76,140,.07);
+  /* Profundidad "porcelana": sombra ambiental amplia y tenue + sombra de
+     contacto corta, ambas tintadas a periwinkle. --halo es la luz interna
+     superior que hace que una superficie se sienta moldeada, no plana. */
+  --shadow-sm: 0 1px 2px rgba(73,78,143,.05), 0 4px 12px rgba(73,78,143,.06);
+  --shadow-md: 0 2px 6px rgba(73,78,143,.05), 0 10px 28px rgba(73,78,143,.10);
+  --shadow-lg: 0 6px 16px rgba(73,78,143,.07), 0 24px 60px rgba(73,78,143,.14);
+  --halo: inset 0 1px 0 rgba(255,255,255,.85);
 
   /* Curvas de easing (Emil): exponenciales, sin rebote. */
   --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
@@ -80,10 +83,12 @@
 
   --glow: 0 0 24px rgba(153, 162, 238, 0.30);
 
-  /* En twilight las sombras se apoyan en negro suave. */
+  /* En twilight las sombras se apoyan en negro suave; el halo baja a un
+     filo de luna apenas visible. */
   --shadow-sm: 0 1px 2px rgba(0,0,0,.3), 0 3px 10px rgba(0,0,0,.3);
   --shadow-md: 0 6px 18px rgba(0,0,0,.36), 0 2px 6px rgba(0,0,0,.3);
   --shadow-lg: 0 18px 46px rgba(0,0,0,.5), 0 6px 16px rgba(0,0,0,.4);
+  --halo: inset 0 1px 0 rgba(255,255,255,.09);
 }
 
 /* ── Base ───────────────────────────────────────────────── */
@@ -92,7 +97,7 @@
 html, body, #root { height: 100%; }
 
 body {
-  font-family: 'Nunito', 'Zen Kaku Gothic New', ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Nunito', ui-sans-serif, system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -101,7 +106,32 @@ body {
 
 /* Títulos con la display cute-cinematográfica */
 h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0.02em; text-wrap: balance; }
-.font-cursive { font-family: 'Pacifico', cursive; }
+
+/* Wordmark: Fredoka semibold, tinta de cielo profundo (AA sobre claro).
+   Sustituye al script Pacifico: mismo encanto, mucho más firme. */
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--primary-dark);
+}
+.dark .wordmark { color: var(--primary); }
+/* Alias legado (usos viejos de la clase cursiva heredan el wordmark nuevo) */
+.font-cursive { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.015em; }
+
+/* ── Grano de proyección ────────────────────────────────────
+   Textura fija de ruido muy tenue sobre las vistas "cielo" (no sobre la sala:
+   el video queda limpio). Unifica los pasteles y mata el look plano-de-IA.
+   Fijo + pointer-events-none: cero repaints en scroll. */
+.cielo-root::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 45;
+  pointer-events: none;
+  opacity: .028;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+.dark .cielo-root::after { opacity: .045; }
 
 /* ── Scrollbar ──────────────────────────────────────────── */
 ::-webkit-scrollbar        { width: 8px; height: 8px; }
@@ -235,12 +265,13 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
    (Todo decorativo. Se desactiva con reduce-motion / prefers-reduced-motion.)
    ============================================================ */
 
-/* CTA principal: glow suave permanente (no agresivo) */
+/* CTA principal: respiración de sombra muy contenida (antes era un glow neón;
+   ahora es la misma sombra tintada que apenas se ensancha, como una respiración) */
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 6px 22px rgba(110,203,245,0.45); }
-  50%       { box-shadow: 0 10px 34px rgba(110,203,245,0.7); }
+  0%, 100% { box-shadow: 0 8px 20px rgba(62,140,203,0.28); }
+  50%       { box-shadow: 0 12px 30px rgba(62,140,203,0.42); }
 }
-.cta-glow { animation: glow-pulse 2.8s ease-in-out infinite; }
+.cta-glow { animation: glow-pulse 3.2s ease-in-out infinite; }
 
 /* Brillo que cruza al hacer hover (sheen) */
 .sheen-host { position: relative; overflow: hidden; }
@@ -422,13 +453,26 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
   .dark .cielo-glass, .dark .cielo-glass-soft { background: rgba(34,37,66,.96); }
 }
 
-/* Botón primario celeste: azul cielo profundo→celeste, texto blanco AA en tamaño grande/bold */
+/* Botón primario "caramelo de cielo": gradiente VERTICAL (luz arriba, peso
+   abajo = pieza moldeada, no plana), filo de luz interno y sombra tintada.
+   Texto blanco AA en peso semibold. */
 .cielo-cta {
-  background: linear-gradient(135deg, #3E8CCB 0%, #5FA6DD 100%);
+  background: linear-gradient(180deg, #5EA5DE 0%, #3E8CCB 100%);
   color: #fff;
-  box-shadow: 0 12px 28px rgba(62,140,203,.36), inset 0 1px 0 rgba(255,255,255,.4);
+  box-shadow:
+    0 10px 24px rgba(62,140,203,.32),
+    inset 0 1.5px 0 rgba(255,255,255,.5),
+    inset 0 -2px 0 rgba(20,60,100,.14);
+  transition: box-shadow .2s var(--ease-out), transform .2s var(--ease-out), filter .2s var(--ease-out);
 }
-.cielo-cta:hover { box-shadow: 0 16px 38px rgba(62,140,203,.48), inset 0 1px 0 rgba(255,255,255,.45); }
+.cielo-cta:hover {
+  filter: brightness(1.04);
+  box-shadow:
+    0 14px 32px rgba(62,140,203,.42),
+    inset 0 1.5px 0 rgba(255,255,255,.55),
+    inset 0 -2px 0 rgba(20,60,100,.14);
+}
+.cielo-cta:active { transform: translateY(1px) scale(.98); }
 
 /* Color de acción para texto/iconos (celeste profundo, AA sobre claro) */
 .cielo-ink-sky { color: #2E78B6; }
@@ -474,22 +518,49 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .amb-spin-slow { animation: amb-spin     var(--d,18s) linear      infinite; }
 .amb-pulse     { animation: amb-pulse    var(--d,4s)  ease-in-out infinite; animation-delay: var(--delay,0s); }
 
+/* Copos de nieve: caída LENTA con vaivén lateral y giro (nieve real, no lluvia).
+   --o controla la opacidad pico (capas de profundidad), --d la duración. */
+@keyframes amb-snow {
+  0%   { transform: translateY(-8vh)  translateX(0)       rotate(0deg);   opacity: 0; }
+  8%   { opacity: var(--o,.9); }
+  28%  { transform: translateY(24vh)  translateX(2.4vw)   rotate(100deg); }
+  52%  { transform: translateY(52vh)  translateX(-1.8vw)  rotate(200deg); }
+  76%  { transform: translateY(80vh)  translateX(2vw)     rotate(290deg); }
+  92%  { opacity: var(--o,.9); }
+  100% { transform: translateY(110vh) translateX(-1vw)    rotate(360deg); opacity: 0; }
+}
+.amb-snow { animation: amb-snow var(--d,16s) linear infinite; animation-delay: var(--delay,0s); will-change: transform, opacity; }
+
+/* Burbuja que "respira" al subir (jelly wobble). Va en un elemento INTERNO al
+   que sube (amb-rise) para que los transforms no colisionen. */
+@keyframes amb-wobble { 0%,100% { transform: scale(1,1); } 33% { transform: scale(1.07,.94); } 66% { transform: scale(.95,1.06); } }
+.amb-wobble { animation: amb-wobble var(--d,4.5s) ease-in-out infinite; animation-delay: var(--delay,0s); }
+
 /* ── Mini-animaciones para las tarjetas de previsualización de ambiente ──
    Escala en px (no vw/vh) para que se vean bien dentro de un tile pequeño. */
 @keyframes amb-mini-rise { 0% { transform: translateY(12px) scale(.7); opacity: 0; } 22% { opacity: 1; } 82% { opacity: .9; } 100% { transform: translateY(-58px) scale(1); opacity: 0; } }
 @keyframes amb-mini-fall { 0% { transform: translateY(-16px); opacity: 0; } 16% { opacity: 1; } 100% { transform: translateY(64px); opacity: 0; } }
 @keyframes amb-mini-drift{ 0%,100% { transform: translateX(-14%); } 50% { transform: translateX(14%); } }
 @keyframes amb-mini-shoot{ 0% { transform: translate(0,0); opacity: 0; } 8% { opacity: 1; } 40% { opacity: 1; } 70% { transform: translate(-70px,44px); opacity: 0; } 100% { opacity: 0; } }
+@keyframes amb-mini-snow {
+  0%   { transform: translateY(-14px) translateX(0)   rotate(0deg);   opacity: 0; }
+  10%  { opacity: .95; }
+  50%  { transform: translateY(40px)  translateX(7px) rotate(170deg); }
+  88%  { opacity: .85; }
+  100% { transform: translateY(96px)  translateX(-5px) rotate(340deg); opacity: 0; }
+}
 .amb-mini-rise  { animation: amb-mini-rise  var(--d,4s)   linear      infinite; animation-delay: var(--delay,0s); }
 .amb-mini-fall  { animation: amb-mini-fall  var(--d,3s)   linear      infinite; animation-delay: var(--delay,0s); }
 .amb-mini-drift { animation: amb-mini-drift var(--d,7s)   ease-in-out infinite; animation-delay: var(--delay,0s); }
 .amb-mini-shoot { animation: amb-mini-shoot var(--d,5s)   ease-in      infinite; animation-delay: var(--delay,0s); }
+.amb-mini-snow  { animation: amb-mini-snow  var(--d,4.5s) linear      infinite; animation-delay: var(--delay,0s); }
 
 @media (prefers-reduced-motion: reduce) {
   .amb-drift, .amb-drift-2, .amb-aurora, .amb-glow, .amb-rise, .amb-fall, .amb-shoot,
   .amb-drift-far, .amb-drift-far-2,
   .amb-floaty, .amb-floaty-2, .amb-spin-slow, .amb-pulse,
-  .amb-mini-rise, .amb-mini-fall, .amb-mini-drift, .amb-mini-shoot {
+  .amb-snow, .amb-wobble,
+  .amb-mini-rise, .amb-mini-fall, .amb-mini-drift, .amb-mini-shoot, .amb-mini-snow {
     animation: none !important;
   }
 }

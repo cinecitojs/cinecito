@@ -54,7 +54,7 @@ export default function Landing() {
       {/* ── Nav ── */}
       <header className="relative z-20 px-4 pt-3 sm:pt-5">
         <nav className="cielo-glass rounded-full max-w-4xl mx-auto h-14 pl-6 pr-2.5 flex items-center justify-between">
-          <span className="font-cursive text-2xl cielo-ink-sky">Cinecito</span>
+          <span className="wordmark text-2xl">Cinecito</span>
           <div className="flex items-center gap-1.5 sm:gap-2">
             <ThemeToggle />
             {isAuthenticated ? (
@@ -175,11 +175,10 @@ export default function Landing() {
               </div>
 
               {/* pie de confianza, compacto */}
-              <div className="mt-3 flex items-center justify-center gap-2.5 text-[12px] text-[#7a8398] dark:text-[#8b93b0]">
+              <div className="mt-3 flex items-center justify-center gap-3 text-[12px] text-[#7a8398] dark:text-[#8b93b0]">
                 <span className="inline-flex items-center gap-1.5"><Youtube className="w-4 h-4 text-[#c4302b]" /> YouTube</span>
-                <span aria-hidden="true">·</span>
                 <span className="inline-flex items-center gap-1.5"><Play className="w-3 h-3 fill-current text-[#1199c9]" /> Vimeo</span>
-                <span aria-hidden="true">·</span>
+                <span aria-hidden="true" className="w-px h-3 bg-current opacity-25" />
                 <span>solo enlaces públicos</span>
               </div>
             </div>

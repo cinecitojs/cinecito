@@ -64,7 +64,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-surface/80 dark:bg-dark-surface/80 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link to="/" className="font-cursive text-xl text-primary">Cinecito</Link>
+          <Link to="/" className="wordmark text-xl">Cinecito</Link>
           <ThemeToggle />
         </div>
       </header>

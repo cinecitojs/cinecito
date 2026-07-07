@@ -125,11 +125,9 @@ export default function Login() {
         </Link>
 
         <nav aria-label="Enlaces legales"
-          className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-4 text-[11px] text-[var(--text-muted)]">
+          className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-4 text-[11px] text-[var(--text-muted)]">
           <Link to="/legal/terminos" className="hover:text-primary transition-colors">Términos</Link>
-          <span aria-hidden="true">·</span>
           <Link to="/legal/privacidad" className="hover:text-primary transition-colors">Privacidad</Link>
-          <span aria-hidden="true">·</span>
           <Link to="/legal/cookies" className="hover:text-primary transition-colors">Cookies</Link>
         </nav>
       </div>

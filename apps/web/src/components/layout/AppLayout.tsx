@@ -41,7 +41,8 @@ export default function AppLayout({ children, hideNav = false }: AppLayoutProps)
       <Link key={to} to={to} aria-label={label} aria-current={active ? 'page' : undefined}
         className={`group relative grid place-items-center w-12 h-12 rounded-2xl transition-[background-color,color] duration-150 ease-out
           ${active ? activeCls : 'text-[var(--text-muted)] hover:bg-[var(--surface-2)] dark:hover:bg-dark-surface2 hover:text-[var(--text)]'}`}>
-        <Icon className="w-5 h-5" />
+        {/* "boop": el icono se inclina apenas al pasar, como saludando */}
+        <Icon className="w-5 h-5 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:-rotate-6" />
         <span className="pointer-events-none absolute left-[calc(100%+14px)] top-1/2 -translate-y-1/2 whitespace-nowrap
                          rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold px-2.5 py-1.5
                          opacity-0 group-hover:opacity-100 transition-opacity duration-150 shadow-cine-sm z-50">
@@ -58,7 +59,7 @@ export default function AppLayout({ children, hideNav = false }: AppLayoutProps)
 
       {/* ── Rail lateral flotante (desktop) ── */}
       <aside className="hidden lg:flex fixed left-4 top-4 bottom-4 z-40 w-[68px] flex-col items-center justify-between
-                        py-4 rounded-[26px] bg-surface dark:bg-dark-surface border border-[var(--border)] shadow-cine-sm">
+                        py-4 rounded-[26px] bg-surface dark:bg-dark-surface border border-[var(--border)] [box-shadow:var(--halo),var(--shadow-sm)]">
         <div className="flex flex-col items-center gap-3">
           <Link to="/home" aria-label="Cinecito — inicio"
             className="grid place-items-center w-11 h-11 rounded-2xl bg-primary/12 text-[var(--primary-dark)] dark:text-primary
@@ -93,7 +94,7 @@ export default function AppLayout({ children, hideNav = false }: AppLayoutProps)
       {/* ── Top-bar mínima (mobile/tablet) ── */}
       <header className="lg:hidden sticky top-0 z-30 h-14 flex items-center justify-between px-4
                          bg-surface/85 dark:bg-dark-surface/85 backdrop-blur-md border-b border-[var(--border)]">
-        <Link to="/home" className="font-cursive text-xl text-primary leading-none">Cinecito</Link>
+        <Link to="/home" className="wordmark text-xl leading-none">Cinecito</Link>
         <div className="flex items-center gap-1">
           <Link to="/apoyar" aria-label="Apoyar a Cinecito"
             className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--secondary-fg)] transition-colors">

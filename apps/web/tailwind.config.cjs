@@ -6,9 +6,10 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans:    ['Nunito', 'Zen Kaku Gothic New', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        display: ['Fredoka', 'Zen Maru Gothic', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        cursive: ['Pacifico', 'cursive'],
+        // Dos familias, una voz: Fredoka (display/wordmark) + Nunito (cuerpo).
+        sans:    ['Nunito', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Fredoka', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        cursive: ['Fredoka', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       colors: {
         // Brand Cinecito — mundo de Pociné (periwinkle/lavanda soñador)

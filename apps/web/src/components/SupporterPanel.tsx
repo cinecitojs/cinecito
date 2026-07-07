@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { supportApi } from '../lib/api';
 import { rewardOf, displayTierOf, unlockedTiers, rankOf, type SupporterTier } from '../lib/supporterRewards';
 import { ROOM_THEMES } from '../lib/roomThemes';
+import ThemePreview from './room/ThemePreview';
 
 const COVER: Record<string, string> = {
   amigo: 'from-pink-400/40 via-rose-300/25 to-amber-200/25',
@@ -166,7 +167,9 @@ export default function SupporterPanel() {
                 className={`relative rounded-2xl border-2 p-3 text-left transition-all
                   ${selected ? 'border-primary bg-primary/10' : 'border-[var(--border)] hover:border-primary/40'}
                   ${!unlocked ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                <span className={`block h-8 rounded-lg bg-gradient-to-br ${t.swatch} mb-2`} />
+                <span className="relative block h-8 rounded-lg overflow-hidden mb-2">
+                  <ThemePreview decor={t.decor} swatch={t.swatch} />
+                </span>
                 <span className="text-xs font-semibold flex items-center gap-1"><Icon className="w-3.5 h-3.5" /> {t.name}</span>
                 {!unlocked && (
                   <span className="absolute top-2 right-2 inline-flex items-center gap-1 text-[10px] font-bold text-[var(--text-muted)] bg-[var(--surface)]/90 dark:bg-dark-surface/90 px-1.5 py-0.5 rounded-full">

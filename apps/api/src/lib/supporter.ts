@@ -15,14 +15,17 @@ export const DEFAULT_BADGE: Record<SupporterTier, string> = {
   amigo: 'amigo', colaborador: 'colaborador', patrocinador: 'patrocinador',
 };
 
-// Tema de sala → nivel mínimo que lo desbloquea. Hoy los temas son recompensa de
-// Patrocinador (3). El mecanismo admite otros niveles para futuros temas sin rehacer nada.
+// Tema de sala → nivel mínimo que lo desbloquea. DEBE coincidir con los ids de
+// apps/web/src/lib/roomThemes.ts (los ids legacy cine-clasico/palomitas/neon ya
+// no existen en el catálogo web y dejaban todo bloqueado).
 export const THEME_MIN_TIER: Record<string, number> = {
-  'cine-clasico': 3,
-  'palomitas': 3,
-  'neon': 3,
-  'noche-estrellada': 3,
-  'proyector-vintage': 3,
+  'cielo-algodon': 2,
+  'aurora-pastel': 2,
+  'burbujas': 2,
+  'copos-nieve': 2,
+  'lluvia-estrellas': 3,
+  'atardecer-malva': 3,
+  'galaxia-kawaii': 3,
 };
 
 export function isTier(v: unknown): v is SupporterTier {

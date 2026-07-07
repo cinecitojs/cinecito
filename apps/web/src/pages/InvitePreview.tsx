@@ -77,7 +77,7 @@ export default function InvitePreview() {
         ) : (
           <>
             <p className="text-xs text-[var(--text-muted)] uppercase tracking-wide">Te invitaron a</p>
-            <h1 className="font-cursive text-3xl text-primary mb-1">{preview!.room!.name}</h1>
+            <h1 className="font-display font-bold text-3xl text-[var(--primary-dark)] dark:text-primary mb-1">{preview!.room!.name}</h1>
             {preview!.room!.description && (
               <p className="text-sm text-[var(--text-muted)] mb-2">{preview!.room!.description}</p>
             )}

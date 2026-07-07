@@ -240,9 +240,8 @@ export default function Home() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="cielo-display font-bold text-sm truncate">{room.name}</p>
-                        <div className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+                        <div className="flex items-center gap-2.5 text-[12px] text-[var(--text-muted)]">
                           <span className="inline-flex items-center gap-1"><Users className="w-3 h-3" />{room._count?.members || 0}</span>
-                          <span aria-hidden>·</span>
                           <span>{room.isPrivate ? 'Privada' : 'Pública'}</span>
                           <span aria-hidden>·</span>
                           <span>{formatDate(room.updatedAt)}</span>

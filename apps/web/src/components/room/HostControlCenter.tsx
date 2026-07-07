@@ -114,9 +114,10 @@ export default function HostControlCenter(p: Props) {
   const pickAmbiance = (id: string | null) => (p.isHost ? p.onSetSettings({ theme: id }) : p.onLocalAmbiance(id));
 
   const ambiances = [
-    { id: null as string | null, name: 'Ninguno', swatch: 'from-slate-200 to-slate-100 dark:from-slate-700 dark:to-slate-800', decor: null as ThemeDecor | null },
-    ...ROOM_THEMES.map((t) => ({ id: t.id, name: t.name, swatch: t.swatch, decor: t.decor })),
+    { id: null as string | null, name: 'Ninguno', description: 'La sala queda limpia: solo la función.', swatch: 'from-slate-200 to-slate-100 dark:from-slate-700 dark:to-slate-800', decor: null as ThemeDecor | null },
+    ...ROOM_THEMES.map((t) => ({ id: t.id, name: t.name, description: t.description, swatch: t.swatch, decor: t.decor })),
   ];
+  const selectedInfo = ambiances.find((a) => a.id === (selectedTheme ?? null));
 
   if (typeof document === 'undefined') return null;
 
@@ -251,6 +252,12 @@ export default function HostControlCenter(p: Props) {
                       );
                     })}
                   </div>
+
+                  {/* Descripción del ambiente elegido (el selector cuenta su historia) */}
+                  <p className="text-xs text-[var(--text-muted)] px-1 pt-0.5 leading-relaxed" aria-live="polite">
+                    <span className="font-semibold text-[var(--text)]">{selectedInfo?.name ?? 'Ninguno'}</span>
+                    {' · '}{selectedInfo?.description}
+                  </p>
 
                   {p.isHost && (
                     <div className="space-y-2.5 pt-1">
